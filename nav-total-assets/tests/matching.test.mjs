@@ -14,7 +14,7 @@ const START = "/* ==== 매칭 엔진 시작", END = "/* ==== 매칭 엔진 끝 =
 assert.ok(html.includes(START) && html.includes(END), "app.html에서 매칭 엔진 구역 표시를 찾지 못했습니다");
 const code = html.slice(html.indexOf(START), html.indexOf(END));
 const ctx = vm.createContext({});
-vm.runInContext(code + "\n;globalThis.E = { scoreName, matchNames, matchStatus, normName, coreName, nums, AUTO_SCORE, REVIEW_SCORE };", ctx);
+vm.runInContext(code + "\n;globalThis.E = { scoreName, matchNames, matchStatus, normName, coreName, nums, cosineSim, buildIdf, AUTO_SCORE, REVIEW_SCORE };", ctx);
 const E = ctx.E;
 const STATUS_KO = { auto: "자동", review: "검토", nomatch: "미매칭" };
 
@@ -78,10 +78,10 @@ test("표기가 달라도 맞는 종목을 1순위로 고른다", async (t) => {
   for (const [target, variant, manager, allowed, how] of VARIANTS) {
     await t.test(how, () => {
       const L = ledger(0, variant, manager);
-      const ranked = TARGETS.map((n) => ({ n, ...E.scoreName(n, L) })).sort((a, b) => b.score - a.score);
-      assert.equal(ranked[0].n, target, `1순위가 ${ranked[0].n} (${ranked[0].score.toFixed(2)})`);
-      // 이 장부 하나만 있을 때의 배정·상태
+      // 이 장부 하나만 있을 때의 점수(TF-IDF 포함)·배정·상태
       const { scores, assign } = E.matchNames(TARGETS, [L]);
+      const ranked = TARGETS.map((n) => ({ n, score: scores.get(n)[0].score })).sort((a, b) => b.score - a.score);
+      assert.equal(ranked[0].n, target, `1순위가 ${ranked[0].n} (${ranked[0].score.toFixed(2)})`);
       assert.equal(assign.get(target), 0, "1:1 배정에서 빠졌습니다");
       const st = E.matchStatus(target, 0, scores);
       assert.ok(allowed.includes(st), `상태 ${STATUS_KO[st]} (점수 ${ranked[0].score.toFixed(2)}), 기대 ${allowed.map((x) => STATUS_KO[x]).join("/")}`);
@@ -104,7 +104,7 @@ const NUMBER_PAIRS = [
 test("이름이 같아도 호수·종류가 다르면 후보가 되지 않는다", async (t) => {
   for (const [target, other, how] of NUMBER_PAIRS) {
     await t.test(how, () => {
-      const s = E.scoreName(target, ledger(0, other)).score;
+      const s = E.matchNames(TARGETS, [ledger(0, other)]).scores.get(target)[0].score;
       assert.ok(s < E.REVIEW_SCORE, `점수 ${s.toFixed(2)} ≥ ${E.REVIEW_SCORE}`);
     });
   }
@@ -127,6 +127,15 @@ test("여러 장부를 한꺼번에 올리면 각자 맞는 종목에 1:1로 붙
   assert.equal(new Set(used).size, used.length, "한 장부가 두 종목에 붙었습니다");
 });
 
+test("코사인 유사도: 같은 이름 1, 겹치는 글자 없으면 0, 흔한 글자는 가중치가 낮다", () => {
+  assert.equal(E.cosineSim("가온블랙락73", "가온블랙락73").toFixed(6), "1.000000");
+  assert.equal(E.cosineSim("가온블랙락", "누리USDL"), 0);
+  // '부동산'처럼 여러 이름에 흔한 글자로 겹친 쌍은, 고유한 글자('가온')로 겹친 쌍보다 TF-IDF에서 점수가 더 많이 깎인다
+  const idf = E.buildIdf(["가온부동산", "누리부동산", "다온부동산", "가온인프라"]);
+  const ratio = (a, b) => E.cosineSim(a, b, idf) / E.cosineSim(a, b);
+  assert.ok(ratio("가온부동산", "누리부동산") < ratio("가온부동산", "가온인프라"));
+});
+
 test("저장된 수동 매핑이 점수보다 우선한다", () => {
   const L = [ledger(0, "전혀 다른 이름의 장부"), ledger(1, "가온대체투자일반사모부동산투자신탁101호")];
   const { assign } = E.matchNames(TARGETS, L, new Map([[TARGETS[0], 0]]));
@@ -140,9 +149,9 @@ test("실제 종목 케이스 (MATCH_CASES)", { skip: !real || !existsSync(real)
   const { targets, cases } = JSON.parse(readFileSync(real, "utf8"));
   for (const [target, variant, manager = "", allowed = ["auto", "review"]] of cases) {
     const L = ledger(0, variant, manager);
-    const ranked = targets.map((n) => ({ n, ...E.scoreName(n, L) })).sort((a, b) => b.score - a.score);
-    assert.equal(ranked[0].n, target, `${variant} → ${ranked[0].n}`);
     const { scores } = E.matchNames(targets, [L]);
+    const ranked = targets.map((n) => ({ n, score: scores.get(n)[0].score })).sort((a, b) => b.score - a.score);
+    assert.equal(ranked[0].n, target, `${variant} → ${ranked[0].n}`);
     assert.ok(allowed.includes(E.matchStatus(target, 0, scores)), `${variant}: ${E.matchStatus(target, 0, scores)}`);
   }
 });

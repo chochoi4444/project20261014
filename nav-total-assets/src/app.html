@@ -328,6 +328,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
           <li><b>정규화</b> — 띄어쓰기·괄호·전각문자를 없애고 Ⅲ→III, 대소문자를 통일합니다.</li>
           <li><b>공통어 제거</b> — 전문투자형사모, 일반사모, 투자신탁, 재간접, 제·호 등 펀드명마다 붙는 말을 빼고 핵심 이름만 비교합니다.</li>
           <li><b>별칭</b> — UP→유나이티드파트너스, 블랙록→블랙락처럼 약칭을 맞춥니다.</li>
+          <li><b>코사인 유사도</b> — 핵심 이름을 글자 1~3개 묶음 벡터로 바꿔 코사인 유사도를 잽니다. 여러 펀드명에 흔한 글자(대체투자, 부동산 등)는 TF-IDF로 가중치를 낮춰, 그 펀드에만 있는 글자가 점수를 좌우합니다. 글자 순서 일치율을 40% 섞어 최종 점수를 냅니다.</li>
           <li><b>호수·종류는 정확히</b> — 1호와 2호, 89호1종과 89호2종, 67호와 67-1호, 3-1호와 3-3호처럼 숫자가 하나라도 다르면 다른 펀드로 보고 후보에서 뺍니다. 파일명의 날짜·분기(2Q) 표기는 미리 지웁니다.</li>
           <li><b>운용사 가점</b> — 장부 머리글의 운용사명이 종목명 앞부분과 같으면 가점을 줍니다.</li>
           <li><b>1:1 배정</b> — 점수가 높은 쌍부터 배정해 한 장부가 두 펀드에 붙지 않게 합니다. 같은 종목명이 여러 행이면 모두 같은 값을 넣습니다.</li>
@@ -338,7 +339,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
         <h3>자동 · 검토 · 미매칭</h3>
         <table>
           <tbody>
-            <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상, 2순위 후보와 차이 0.08 이상, 순자산+부채 검증 통과, 기준일 일치. 기본으로 입력됩니다.</td></tr>
+            <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상이면서 2순위 후보와 차이 0.08 이상, 또는 유사도 0.75 이상이면서 2순위와 차이 0.40 이상. 여기에 순자산+부채 검증 통과, 기준일 일치까지 맞으면 기본으로 입력됩니다.</td></tr>
             <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 검증 불일치, 기준일 상이, 장부가 자산합계 사용 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
             <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 브라우저에 저장돼 다음 분기에도 그대로 붙습니다.</td></tr>
             <tr><td><span class="pill bad">미매칭</span></td><td>맞는 장부가 없거나 점수가 너무 낮음. PEF·비상장주식처럼 기준가격대장이 없는 종목은 보통 여기에 남습니다.</td></tr>
@@ -401,16 +402,38 @@ function nums(s) {
 }
 const sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-function bigrams(s) { const out = []; for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2)); return out; }
-function dice(a, b) {
-  if (!a.length || !b.length) return 0;
-  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
-  const A = bigrams(a), B = bigrams(b), m = new Map();
-  for (const g of A) m.set(g, (m.get(g) || 0) + 1);
-  let hit = 0;
-  for (const g of B) { const c = m.get(g); if (c) { hit++; m.set(g, c - 1); } }
-  return (2 * hit) / (A.length + B.length);
+/* 코사인 유사도: 핵심 이름을 글자 1~3개 묶음(n-gram) 벡터로 바꾸고, 여러 펀드명에 흔한 묶음은
+   TF-IDF로 가중치를 낮춰 그 펀드에만 있는 글자가 점수를 좌우하게 한다. */
+const GRAM_SIZES = [1, 2, 3];
+const gramCache = new Map();
+function grams(s) {
+  let m = gramCache.get(s);
+  if (m) return m;
+  m = new Map();
+  for (const n of GRAM_SIZES) for (let i = 0; i + n <= s.length; i++) { const g = s.slice(i, i + n); m.set(g, (m.get(g) || 0) + 1); }
+  if (gramCache.size > 20000) gramCache.clear();
+  gramCache.set(s, m);
+  return m;
 }
+/* 비교 대상 전체(대상 종목명 + 장부 펀드명)의 핵심 이름으로 IDF를 만든다 */
+function buildIdf(coreNames) {
+  const df = new Map();
+  for (const s of new Set(coreNames)) for (const g of grams(s).keys()) df.set(g, (df.get(g) || 0) + 1);
+  const N = new Set(coreNames).size, idf = new Map();
+  for (const [g, d] of df) idf.set(g, Math.log((1 + N) / (1 + d)) + 1);
+  return { idf, unseen: Math.log(1 + N) + 1 };
+}
+function cosineSim(a, b, idfInfo) {
+  if (!a.length || !b.length) return 0;
+  const A = grams(a), B = grams(b);
+  const w = (g) => (idfInfo ? idfInfo.idf.get(g) ?? idfInfo.unseen : 1);
+  let dot = 0, na = 0, nb = 0;
+  for (const [g, c] of A) { const x = c * w(g); na += x * x; const d = B.get(g); if (d) dot += x * d * w(g); }
+  for (const [g, c] of B) { const y = c * w(g); nb += y * y; }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+/* 이름 유사도 = 코사인(TF-IDF) 60% + 글자 순서 일치(LCS) 40% */
+const COSINE_WEIGHT = 0.6;
 function lcsRatio(a, b) {
   if (!a.length || !b.length) return 0;
   let prev = new Array(b.length + 1).fill(0);
@@ -423,15 +446,16 @@ function lcsRatio(a, b) {
 }
 
 /* 대상 종목명과 장부 하나의 유사도 (0~1) */
-function scoreName(target, ledger) {
+function scoreName(target, ledger, idfInfo) {
   const tn = normName(target), tc = coreName(target), tnum = nums(target);
   let best = 0, why = "";
   for (const cand of ledger.nameCands) {
     if (!cand) continue;
     if (normName(cand) === tn) return { score: 1, why: "펀드명 완전 일치" };
     const cc = coreName(cand), cnum = nums(cand);
-    let s = 0.5 * dice(tc, cc) + 0.5 * lcsRatio(tc, cc);
-    let w = "이름 유사";
+    const cs = cosineSim(tc, cc, idfInfo);
+    let s = COSINE_WEIGHT * cs + (1 - COSINE_WEIGHT) * lcsRatio(tc, cc);
+    let w = `코사인 ${cs.toFixed(2)}`;
     if (tnum.length && cnum.length) {
       // 호수·종류(1종/2종, 67호/67-1호, 3-1호/3-3호)가 하나라도 다르면 다른 펀드로 본다
       if (sameSet(tnum, cnum)) { s = s * 0.85 + 0.15; w += " · 호수 일치"; }
@@ -448,14 +472,17 @@ function scoreName(target, ledger) {
 }
 
 const AUTO_SCORE = 0.85, AUTO_MARGIN = 0.08, REVIEW_SCORE = 0.55;
+// 코사인은 같은 펀드와 다른 펀드의 점수 차이가 크게 벌어진다: 점수가 조금 낮아도 2순위와 격차가 크면 자동
+const AUTO_CLEAR_SCORE = 0.75, AUTO_CLEAR_MARGIN = 0.4;
 
 /* 대상 종목명들과 장부들을 1:1로 짝짓는다.
    ledgers: [{id, nameCands, manager, name?, fileTitle?}], forced: Map(종목명 -> 장부 id | null)
    반환: scores = Map(종목명 -> [{id, score, why}]), assign = Map(종목명 -> 장부 id | null) */
 function matchNames(names, ledgers, forced = new Map()) {
   const uniq = [...new Set(names)];
+  const idfInfo = buildIdf(uniq.concat(ledgers.flatMap((l) => l.nameCands.filter(Boolean))).map(coreName));
   const scores = new Map();
-  for (const n of uniq) scores.set(n, ledgers.map((l) => ({ id: l.id, ...scoreName(n, l) })));
+  for (const n of uniq) scores.set(n, ledgers.map((l) => ({ id: l.id, ...scoreName(n, l, idfInfo) })));
   // 호수 유일 일치: 장부 이름이 깨져도 두 자리 이상 호수가 대상 하나와만 맞으면 검토 후보로 올림
   for (const l of ledgers) {
     const cn = nums(l.name || l.fileTitle || l.nameCands[0] || "");
@@ -484,7 +511,10 @@ function matchStatus(name, id, scores) {
   const e = list.find((x) => x.id === id);
   if (!e) return "nomatch";
   const second = list.filter((x) => x.id !== id).reduce((m, x) => Math.max(m, x.score), 0);
-  return e.score >= AUTO_SCORE && e.score - second >= AUTO_MARGIN ? "auto" : "review";
+  const margin = e.score - second;
+  if (e.score >= AUTO_SCORE && margin >= AUTO_MARGIN) return "auto";
+  if (e.score >= AUTO_CLEAR_SCORE && margin >= AUTO_CLEAR_MARGIN) return "auto";
+  return "review";
 }
 /* ==== 매칭 엔진 끝 ==== */
 
@@ -827,7 +857,7 @@ function runMatching() {
     if (L.value == null) res.notes.push("총자산 값 없음");
     if (fid) res.status = "manual";
     else if (nameStatus === "auto" && dateOk && L.check.s !== "warn" && L.value != null) res.status = "auto";
-    else { res.status = "review"; if (e.score < AUTO_SCORE) res.notes.unshift("유사도 낮음"); else if (nameStatus !== "auto") res.notes.unshift("비슷한 후보 있음"); }
+    else { res.status = "review"; if (nameStatus !== "auto") res.notes.unshift(e.score < AUTO_SCORE ? "유사도 낮음" : "비슷한 후보 있음"); }
     res.include = (res.status === "auto" || (res.status === "manual" && dateOk)) && L.value != null;
     if (hasVal && !overwrite) { res.include = false; res.notes.push("기존 값 있음 (덮어쓰기 꺼짐)"); }
     return res;
