@@ -19,7 +19,8 @@ const page = await browser.newPage({ acceptDownloads: true });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-await page.goto(pathToFileURL(page_).href);
+// PAGE_URL을 주면 배포된 주소(또는 로컬 서버)로 검사한다
+await page.goto(process.env.PAGE_URL || pathToFileURL(page_).href);
 await page.setInputFiles("#targetFile", payload(TARGET));
 await page.waitForFunction(() => document.querySelector("#targetInfo").textContent.includes("행"));
 await page.setInputFiles("#ledgerFiles", readdirSync(LEDGERS).map((f) => payload(join(LEDGERS, f))));

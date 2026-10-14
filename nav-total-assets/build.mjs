@@ -29,4 +29,7 @@ const out = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta na
 mkdirSync(join(here, "dist"), { recursive: true });
 const file = join(here, "dist", "총자산자동입력_오프라인.html");
 writeFileSync(file, out);
-console.log(`만들었습니다: ${file} (${(out.length / 1024 / 1024).toFixed(1)} MB)`);
+// Vercel 등 정적 호스팅용: 같은 내용을 index.html로도 둔다
+writeFileSync(join(here, "dist", "index.html"), out);
+writeFileSync(join(here, "dist", "robots.txt"), "User-agent: *\nDisallow: /\n");
+console.log(`만들었습니다: ${file} (${(out.length / 1024 / 1024).toFixed(1)} MB) + dist/index.html`);

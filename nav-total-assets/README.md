@@ -23,7 +23,8 @@
 | `src/app.html` | 도구 본체 (claude.ai 아티팩트로 배포되는 페이지, 라이브러리는 cdnjs에서 로드) |
 | `build.mjs` | 라이브러리를 HTML 하나에 넣은 **오프라인판** 생성 |
 | `tests/matching.test.mjs` | 펀드명 매칭 회귀 테스트 (`npm test`) |
-| `tests/e2e.mjs` | 실제 장부로 끝까지 돌려 보는 점검 스크립트 (`npm run e2e`, 장부 파일은 저장소에 넣지 않음) |
+| `tests/e2e.mjs` | 실제 장부로 끝까지 돌려 보는 점검 스크립트 (`npm run e2e`, `PAGE_URL`로 배포 주소 검사 가능, 장부 파일은 저장소에 넣지 않음) |
+| `../vercel.json` | Vercel 빌드·보안 헤더 설정 |
 
 ## 오프라인판 만들기 (사내 PC용, 외부 접속 0건)
 
@@ -34,6 +35,21 @@ npm run build        # → dist/총자산자동입력_오프라인.html
 ```
 
 만들어진 HTML 파일 하나를 사내 PC에서 더블클릭해 크롬/엣지로 열면 됩니다. 웹 폰트도 빠지므로 인터넷 연결이 전혀 필요 없습니다.
+
+## Vercel 배포
+
+저장소 루트의 `vercel.json`에 설정이 다 들어 있어, Vercel에서 저장소를 가져오기만 하면 됩니다.
+
+1. [vercel.com/new](https://vercel.com/new)에서 GitHub 저장소 `project20261014`를 **Import**합니다.
+2. 설정 화면은 그대로 두고 **Deploy**를 누릅니다. Root Directory도 바꾸지 않습니다(루트의 `vercel.json`이 `nav-total-assets`를 빌드합니다).
+3. 기본 브랜치(`main`)에 합쳐진 내용이 정식 주소로 배포되고, 다른 브랜치는 미리보기 주소로 배포됩니다.
+
+배포되는 것은 라이브러리를 내장한 오프라인판(`dist/index.html`) 한 장입니다. `vercel.json`의 보안 헤더가 브라우저에서 다음을 강제합니다.
+
+- `Content-Security-Policy`: 외부 주소로의 요청(fetch·이미지·비콘·폼 전송)을 모두 차단 → 올린 파일 내용이 밖으로 나갈 수 없음
+- 다른 사이트 안에 끼워 넣기 금지(`frame-ancestors 'none'`, `X-Frame-Options: DENY`), 검색엔진 노출 금지(`X-Robots-Tag`, `robots.txt`)
+
+배포 주소는 링크를 아는 누구나 열 수 있습니다(파일은 각자 브라우저에서만 처리되므로 데이터가 노출되지는 않습니다). 사내 인원으로 제한하려면 Vercel 프로젝트의 **Settings → Deployment Protection**에서 Vercel Authentication 또는 Password Protection(유료 플랜)을 켜세요.
 
 ## 점검
 
@@ -81,6 +97,7 @@ TARGET=대상.xlsx LEDGERS=장부폴더 BASE_DATE=2026-09-30 npm run e2e
 | 알려진 취약점 | SheetJS 0.18.5: CVE-2023-30533, CVE-2024-22363 (조작된 파일을 읽을 때). 내부 장부만 읽으므로 위험 낮음. 엄격한 기준이면 SheetJS 공식 0.20.x로 교체 후 빌드 |
 | DRM 암호화 파일 | 읽을 수 없음 → 해제된 사본 사용 |
 | 스캔(이미지) PDF | 읽을 수 없음 (OCR 미포함) → 수기 확인 |
+| Vercel 배포 | 외부 접속 0건인 오프라인판 + CSP로 외부 전송 차단. 접근 제한은 Deployment Protection |
 
 ## 기준가격대장에서 추가로 읽을 수 있는 값
 

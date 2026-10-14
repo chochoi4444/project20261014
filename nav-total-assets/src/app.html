@@ -289,6 +289,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
             <tr><td><b>알려진 취약점</b></td><td>SheetJS 0.18.5에는 조작된 엑셀을 읽을 때의 프로토타입 오염(CVE-2023-30533)·ReDoS(CVE-2024-22363) 이슈가 있습니다. 사무수탁사에서 받은 내부 장부만 읽는 용도라 위험은 낮지만, 보안 기준이 엄격하면 SheetJS 공식 배포본 0.20.x로 바꿔 오프라인판을 만들면 됩니다.</td><td><span class="pill warn">조건부</span></td></tr>
             <tr><td><b>사내 DRM 암호화 파일</b></td><td>문서보안(DRM)이 걸린 엑셀·PDF는 브라우저가 내용을 읽을 수 없어 ‘읽기 실패’로 표시됩니다. DRM 해제 또는 반출 승인된 사본을 써야 합니다.</td><td><span class="pill warn">운영 절차 필요</span></td></tr>
             <tr><td><b>스캔 PDF</b></td><td>글자 정보가 없는 이미지 PDF는 읽지 못합니다(OCR 미포함). 해당 장부는 ‘텍스트 없는 PDF’로 표시됩니다.</td><td><span class="pill mute">수기 확인</span></td></tr>
+            <tr><td><b>Vercel 배포판</b></td><td>라이브러리를 내장한 오프라인판을 올리고, 보안 헤더(CSP)로 외부 주소 요청을 브라우저에서 모두 막습니다. 주소를 아는 사람은 열 수 있으니, 사내 인원으로 제한하려면 Vercel의 Deployment Protection을 켭니다.</td><td><span class="pill ok">적합</span></td></tr>
             <tr><td><b>claude.ai 접속</b></td><td>이 공개 페이지는 claude.ai에 올라가 있습니다. 사내망에서 접속이 막혀 있으면 오프라인판을 쓰면 됩니다.</td><td><span class="pill mute">환경에 따라</span></td></tr>
             <tr><td><b>결과 책임</b></td><td>유사도가 낮거나 검증이 맞지 않는 행은 ‘검토’로 표시되고 기본적으로 입력에서 빠집니다. 담당자가 확인하고 체크해야 저장됩니다.</td><td><span class="pill ok">통제 있음</span></td></tr>
           </tbody>
