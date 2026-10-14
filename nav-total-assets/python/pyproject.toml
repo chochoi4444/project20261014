@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nav-total-assets"
+version = "1.0.0"
+description = "기준가격대장(신탁재산명세부)에서 총자산을 읽어 대상 엑셀에 자동 입력"
+requires-python = ">=3.9"
+dependencies = ["openpyxl>=3.1", "xlrd>=2.0", "pdfplumber>=0.10"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+nav-total-assets = "nav_total_assets.cli:main"
+
+[tool.setuptools]
+packages = ["nav_total_assets"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

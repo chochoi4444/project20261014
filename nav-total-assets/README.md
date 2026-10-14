@@ -22,6 +22,8 @@
 | 경로 | 내용 |
 | --- | --- |
 | `src/app.html` | 도구 본체 (claude.ai 아티팩트로 배포되는 페이지, 라이브러리는 cdnjs에서 로드) |
+| `python/` | **파이썬판** — 같은 규칙의 명령줄 프로그램 ([python/README.md](python/README.md)) |
+| `tests/fixtures/matching-cases.json` | 웹·파이썬 테스트가 함께 쓰는 가상 펀드명 케이스 |
 | `build.mjs` | 라이브러리를 HTML 하나에 넣은 **오프라인판** 생성 |
 | `tests/matching.test.mjs` | 펀드명 매칭 회귀 테스트 (`npm test`) |
 | `tests/e2e.mjs` | 실제 장부로 끝까지 돌려 보는 점검 스크립트 (`npm run e2e`, `PAGE_URL`로 배포 주소 검사 가능, 장부 파일은 저장소에 넣지 않음) |
