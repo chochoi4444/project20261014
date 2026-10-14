@@ -85,6 +85,11 @@ nav.tabs a:hover { color: var(--ink) }
 .fchip .n { font-family: var(--f-num); font-weight: 500 }
 .fchip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink) }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; align-self: center }
+.notice { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: var(--warn-bg); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: var(--r); padding: 10px 14px; font-size: 13px }
+.notice b { color: var(--warn) }
+.notice .btn { padding: 5px 12px; font-size: 13px }
+.save-hint { font-size: 12.5px; color: var(--warn); display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.save-hint .btn { padding: 4px 10px; font-size: 12.5px }
 .example-flag { font-size: 12px; font-weight: 600; color: var(--warn); background: var(--warn-bg); padding: 3px 9px; border-radius: 4px }
 
 .sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); min-width: 0 }
@@ -179,8 +184,10 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
       <span id="busy" class="busy" hidden><span class="spin"></span><span id="busyText">읽는 중…</span></span>
       <button class="btn" id="btnCsv" disabled>매칭 결과 CSV</button>
       <button class="btn primary" id="btnSave" disabled>총자산 입력한 엑셀 저장</button>
+      <span class="save-hint" id="saveHint" hidden></span>
     </div>
 
+    <div class="notice" id="notice" hidden></div>
     <div class="summary" id="summary"></div>
 
     <div class="sheet">
@@ -878,6 +885,23 @@ function render() {
 
   const ready = !!state.target && !state.example;
   $("#btnSave").disabled = !(ready && inc > 0);
+
+  // 장부 기준일과 기준일 칸이 다르면 이유와 해결 버튼을 보여 준다
+  const base = $("#baseDate").value || state.target?.baseDate || "";
+  const dates = {};
+  R.forEach((r) => { const l = r.ledgerId != null ? L(r.ledgerId) : null; if (l && l.date) dates[l.date] = (dates[l.date] || 0) + 1; });
+  const common = Object.entries(dates).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const mismatched = ready && common && base && common !== base ? R.filter((r) => { const l = r.ledgerId != null ? L(r.ledgerId) : null; return l && l.date && l.date !== base; }).length : 0;
+  const notice = $("#notice");
+  notice.hidden = !mismatched;
+  if (mismatched) notice.innerHTML = `<span>기준일 칸은 <b>${esc(base)}</b>인데 올린 장부는 대부분 <b>${esc(common)}</b>자입니다. 그래서 매칭된 ${mismatched}행이 ‘검토’로 분류되었습니다. 이번 분기가 ${esc(common)} 기준이면 기준일을 바꾸세요.</span><button class="btn" id="btnFixDate" data-date="${esc(common)}">기준일을 ${esc(common)}로 바꾸기</button>`;
+
+  const hint = $("#saveHint");
+  const reviewable = R.filter((r) => r.status === "review" && !r.include && r.ledgerId != null && L(r.ledgerId)?.value != null);
+  hint.hidden = !(ready && inc === 0);
+  if (ready && inc === 0) hint.innerHTML = reviewable.length
+    ? `입력할 행이 없습니다. ‘검토’ ${reviewable.length}행을 확인한 뒤 체크하세요.<button class="btn" id="btnCheckReview">검토 행 모두 체크</button>`
+    : (state.ledgers.length ? "입력할 행이 없습니다. 매칭된 장부가 없거나 이미 값이 있는 칸입니다." : "기준가격대장을 올리면 저장할 수 있습니다.");
   $("#btnCsv").disabled = !ready;
 }
 
@@ -907,6 +931,14 @@ $("#tbody").addEventListener("change", (e) => {
   }
 });
 $("#overwrite").addEventListener("change", () => { if (!state.example) runMatching(); });
+document.addEventListener("click", (e) => {
+  if (e.target.id === "btnFixDate") { $("#baseDate").value = e.target.dataset.date; runMatching(); toast(`기준일을 ${e.target.dataset.date}로 바꿨습니다`); }
+  if (e.target.id === "btnCheckReview") {
+    let n = 0;
+    state.results.forEach((r) => { const l = state.ledgers.find((x) => x.id === r.ledgerId); if (r.status === "review" && l && l.value != null) { r.include = true; n++; } });
+    render(); toast(`검토 ${n}행을 입력하도록 체크했습니다. 저장 전에 금액을 확인하세요`);
+  }
+});
 $("#baseDate").addEventListener("change", () => { if (!state.example) runMatching(); });
 
 function busy(on, text) { $("#busy").hidden = !on; if (text) $("#busyText").textContent = text; }

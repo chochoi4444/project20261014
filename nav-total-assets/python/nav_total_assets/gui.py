@@ -13,7 +13,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from . import __version__
-from .pipeline import STATUS_KO, load_mapping, run, save_report, save_workbook
+from .pipeline import STATUS_KO, date_mismatch, load_mapping, run, save_report, save_workbook
 from .workbook import parse_target
 
 STATUS_ORDER = ["auto", "review", "manual", "nomatch", "skip"]
@@ -271,6 +271,15 @@ class App:
             lines.append("\n입력할 행이 없어 엑셀은 저장하지 않았습니다.\n'검토' 행을 확인한 뒤 '검토 행도 입력'을 켜고 다시 실행하세요.")
             self.status_var.set("입력할 행이 없습니다.")
         lines.append(f"\n매칭 근거:\n{report}")
+        common, n_mis = date_mismatch(results, base)
+        if common:
+            # 기준일이 달라 '검토'로 빠진 경우: 바로 고쳐 다시 실행할 수 있게 묻는다
+            lines.append(f"\n※ 기준일은 {base}인데 매칭된 장부는 대부분 {common}자입니다.\n"
+                         f"   그래서 {n_mis}행이 '검토'로 분류됐습니다.\n\n기준일을 {common}로 바꿔 다시 실행할까요?")
+            if messagebox.askyesno("총자산 자동입력", "\n".join(lines)):
+                self.date_var.set(common)
+                self.start()
+            return
         messagebox.showinfo("총자산 자동입력", "\n".join(lines))
 
     def _fill_table(self):

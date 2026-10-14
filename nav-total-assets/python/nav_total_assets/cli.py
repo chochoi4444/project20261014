@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .pipeline import STATUS_KO, load_mapping, run, save_report, save_workbook
+from .pipeline import STATUS_KO, date_mismatch, load_mapping, run, save_report, save_workbook
 
 
 def _fmt(n):
@@ -75,6 +75,10 @@ def main(argv=None) -> int:
     cnt = {k: sum(1 for r in results if r.status == k) for k in STATUS_KO}
     inc = sum(1 for r in results if r.include)
     print("\n요약: " + " · ".join(f"{STATUS_KO[k]} {v}" for k, v in cnt.items()) + f" · 입력 {inc}행")
+    common, n_mis = date_mismatch(results, base)
+    if common:
+        print(f"주의: 기준일은 {base}인데 매칭된 장부는 대부분 {common}자입니다. 그래서 {n_mis}행이 '검토'로 분류됐습니다."
+              f" 이번 분기가 {common} 기준이면 --base-date {common} 을 붙여 다시 실행하세요.")
     used = {r.ledger.id for r in results if r.ledger}
     unused = [l for l in ledgers if not l.error and l.id not in used]
     if unused:

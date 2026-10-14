@@ -131,6 +131,20 @@ def run(target_path, ledger_paths, base_date: str | None = None, overwrite: bool
     return target, ledgers, results, base
 
 
+def date_mismatch(results: list[RowResult], base: str | None):
+    """매칭된 장부의 가장 흔한 기준일이 기준일과 다르면 (그 날짜, 해당 행 수), 아니면 (None, 0)"""
+    dates: dict[str, int] = {}
+    for r in results:
+        if r.ledger and r.ledger.date:
+            dates[r.ledger.date] = dates.get(r.ledger.date, 0) + 1
+    if not dates or not base:
+        return None, 0
+    common = max(dates.items(), key=lambda kv: kv[1])[0]
+    if common == base:
+        return None, 0
+    return common, sum(1 for r in results if r.ledger and r.ledger.date and r.ledger.date != base)
+
+
 def save_workbook(target: Target, results: list[RowResult], out: Path) -> int:
     values = {f"{target.asset_col_letter}{r.excel_row}": r.ledger.value for r in results if r.include and r.ledger}
     return write_values(target.path, out, target.sheet_index, values)
