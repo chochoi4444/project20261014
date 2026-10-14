@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node tests/e2e.mjs"
+    "test": "node --test tests/matching.test.mjs",
+    "e2e": "node tests/e2e.mjs"
   },
   "dependencies": {
     "jszip": "3.10.1",

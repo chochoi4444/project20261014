@@ -299,6 +299,26 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
 
   <!-- ============ 규칙 ============ -->
   <section class="page" id="page-rules" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><h3>펀드명이 이렇게 달라도 찾습니다</h3><span style="font-size:12.5px;color:var(--ink-2)">회귀 테스트로 매번 확인하는 항목 · 예시는 가상의 펀드명</span></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>표기가 달라진 방식</th><th>대상 엑셀</th><th>기준가격대장</th><th>결과</th></tr></thead>
+          <tbody>
+            <tr><td>법 개정 명칭</td><td>가온대체투자전문투자형사모부동산투자신탁101호</td><td>가온대체투자일반사모부동산투자신탁101호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>운용사 정식명 · 영문 · 띄어쓰기</td><td>누리인베스트MACKUSDEBT사모부동산4호</td><td>누리인베스트먼트 Mack US Debt 일반사모부동산투자신탁 제4호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>괄호 부가설명 생략</td><td>다온북미AG일반사모특별자산신탁제1호(대출채권-재간접형)(전문)</td><td>다온북미AG일반사모특별자산투자신탁1호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>‘호’ · ‘제’ 표기</td><td>보람북미크레딧전문투자사모특별자산8</td><td>보람북미크레딧일반사모특별자산투자신탁8호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>한글 ↔ 영문</td><td>가온대체투자블랙락전문투자형사모73호</td><td>가온대체투자 BlackRock 일반사모투자신탁 73호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>로마숫자 · 대소문자</td><td>새봄 USDL Ⅲ LEVERED NOTE 일반사모투자신탁 제1호</td><td>새봄 USDL III Levered Note 일반사모투자신탁 제1호</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>클래스 표기</td><td>마루더드림중단기크레딧증권투자신탁[채권]CLASSC-F</td><td>마루더드림중단기크레딧증권투자신탁[채권]C-F</td><td><span class="pill ok">자동</span></td></tr>
+            <tr><td>운용사 약칭 · 단어 차이</td><td>한울파트너스전문투자형사모부동산투자신탁유럽제1호</td><td>한울해외부동산투자신탁1호(전문) + 머리글 ‘한울파트너스자산운용’</td><td><span class="pill ok">자동</span> <span class="pill warn">검토</span></td></tr>
+            <tr><td>핵심 단어가 바뀜</td><td>이음해외간접사모부동산신탁21호</td><td>이음글로벌일반사모부동산투자신탁21호</td><td><span class="pill warn">검토</span></td></tr>
+            <tr><td>번호만 다른 펀드</td><td>…89호1종 · …67호 · …3-1호 · …5[채권]</td><td>…89호2종 · …67-1호 · …3-3호 · …6(채권)</td><td><span class="pill bad">후보 아님</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
     <div class="grid2">
       <div class="card">
         <span class="eyebrow">펀드명 매칭</span>
@@ -352,6 +372,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const fmt = (n) => (n == null || isNaN(n)) ? "" : Math.round(n).toLocaleString("ko-KR");
 const fmtNav = (n) => (n == null || isNaN(n)) ? "" : n.toLocaleString("ko-KR", { maximumFractionDigits: 6 });
 
+/* ==== 매칭 엔진 시작 (DOM을 쓰지 않음 · tests/matching.test.mjs가 이 구역만 떼어 검사) ==== */
 /* ---------- 텍스트 정규화 ---------- */
 const nfkc = (s) => String(s ?? "").normalize("NFKC");
 const normLabel = (s) => nfkc(s).replace(/[\s\[\]▶:：·]/g, "");
@@ -424,6 +445,47 @@ function scoreName(target, ledger) {
   }
   return { score: Math.min(1, best), why };
 }
+
+const AUTO_SCORE = 0.85, AUTO_MARGIN = 0.08, REVIEW_SCORE = 0.55;
+
+/* 대상 종목명들과 장부들을 1:1로 짝짓는다.
+   ledgers: [{id, nameCands, manager, name?, fileTitle?}], forced: Map(종목명 -> 장부 id | null)
+   반환: scores = Map(종목명 -> [{id, score, why}]), assign = Map(종목명 -> 장부 id | null) */
+function matchNames(names, ledgers, forced = new Map()) {
+  const uniq = [...new Set(names)];
+  const scores = new Map();
+  for (const n of uniq) scores.set(n, ledgers.map((l) => ({ id: l.id, ...scoreName(n, l) })));
+  // 호수 유일 일치: 장부 이름이 깨져도 두 자리 이상 호수가 대상 하나와만 맞으면 검토 후보로 올림
+  for (const l of ledgers) {
+    const cn = nums(l.name || l.fileTitle || l.nameCands[0] || "");
+    if (!cn.some((x) => x.length >= 2)) continue;
+    const hits = uniq.filter((n) => sameSet(nums(n), cn));
+    if (hits.length === 1) {
+      const e = scores.get(hits[0]).find((x) => x.id === l.id);
+      if (e.score < 0.62) { e.score = 0.62; e.why = "호수만 유일하게 일치"; }
+    }
+  }
+  const assign = new Map(), usedL = new Set();
+  for (const [n, id] of forced) if (scores.has(n)) { assign.set(n, id); if (id != null) usedL.add(id); }
+  const pairs = [];
+  for (const [n, list] of scores) if (!assign.has(n)) for (const e of list) if (e.score >= REVIEW_SCORE) pairs.push({ n, ...e });
+  pairs.sort((a, b) => b.score - a.score);
+  for (const p of pairs) {
+    if (assign.has(p.n) || usedL.has(p.id)) continue;
+    assign.set(p.n, p.id); usedL.add(p.id);
+  }
+  return { scores, assign };
+}
+
+/* 배정된 장부의 이름 점수만으로 본 상태: 자동 / 검토 (기준일·검증은 화면 쪽에서 추가로 따짐) */
+function matchStatus(name, id, scores) {
+  const list = scores.get(name) || [];
+  const e = list.find((x) => x.id === id);
+  if (!e) return "nomatch";
+  const second = list.filter((x) => x.id !== id).reduce((m, x) => Math.max(m, x.score), 0);
+  return e.score >= AUTO_SCORE && e.score - second >= AUTO_MARGIN ? "auto" : "review";
+}
+/* ==== 매칭 엔진 끝 ==== */
 
 /* ---------- 숫자·날짜 ---------- */
 function toNum(v) {
@@ -729,21 +791,6 @@ function runMatching() {
   const overwrite = $("#overwrite").checked;
   const base = $("#baseDate").value || T.baseDate;
   const uniq = [...new Set(T.rows.map((r) => r.name))];
-  const scores = new Map(); // name -> [{id, score, why}]
-  for (const n of uniq) {
-    const list = Ls.map((l) => ({ id: l.id, ...scoreName(n, l) }));
-    scores.set(n, list);
-  }
-  // 호수 유일 일치: 장부 이름이 깨져도 두 자리 이상 호수가 대상 하나와만 맞으면 검토 후보로 올림
-  for (const l of Ls) {
-    const cn = nums(l.name || l.fileTitle);
-    if (!cn.some((x) => x.length >= 2)) continue;
-    const hits = uniq.filter((n) => sameSet(nums(n), cn));
-    if (hits.length === 1) {
-      const e = scores.get(hits[0]).find((x) => x.id === l.id);
-      if (e.score < 0.62) { e.score = 0.62; e.why = "호수만 유일하게 일치"; }
-    }
-  }
   // 저장된 매핑
   const forced = new Map();
   for (const n of uniq) {
@@ -753,16 +800,7 @@ function runMatching() {
     const l = Ls.find((x) => x.key === key);
     if (l) forced.set(n, l.id);
   }
-  const assign = new Map(), usedL = new Set();
-  for (const [n, id] of forced) { assign.set(n, id); if (id != null) usedL.add(id); }
-  const pairs = [];
-  for (const [n, list] of scores) if (!assign.has(n)) for (const e of list) if (e.score >= 0.45) pairs.push({ n, ...e });
-  pairs.sort((a, b) => b.score - a.score);
-  for (const p of pairs) {
-    if (assign.has(p.n) || usedL.has(p.id)) continue;
-    if (p.score < 0.55) continue;
-    assign.set(p.n, p.id); usedL.add(p.id);
-  }
+  const { scores, assign } = matchNames(uniq, Ls, forced);
   state.results = T.rows.map((r) => {
     const list = (scores.get(r.name) || []).slice().sort((a, b) => b.score - a.score);
     const res = { ...r, cands: list, ledgerId: null, score: 0, why: "", status: "nomatch", include: false, manual: false, notes: [] };
@@ -781,15 +819,14 @@ function runMatching() {
     const e = list.find((x) => x.id === id) || { score: 1, why: "" };
     res.ledgerId = id; res.score = fid ? 1 : e.score; res.why = fid ? "저장된 매핑" : e.why;
     res.value = L.value;
-    const second = list.find((x) => x.id !== id);
-    const margin = e.score - (second ? second.score : 0);
+    const nameStatus = matchStatus(r.name, id, scores);
     const dateOk = !base || !L.date || L.date === base;
     if (!dateOk) res.notes.push(`기준일 ${L.date} ≠ ${base}`);
     if (L.check.s === "warn") res.notes.push(L.check.t);
     if (L.value == null) res.notes.push("총자산 값 없음");
     if (fid) res.status = "manual";
-    else if (e.score >= 0.85 && margin >= 0.08 && dateOk && L.check.s !== "warn" && L.value != null) res.status = "auto";
-    else { res.status = "review"; if (e.score < 0.85) res.notes.unshift("유사도 낮음"); else if (margin < 0.08) res.notes.unshift("비슷한 후보 있음"); }
+    else if (nameStatus === "auto" && dateOk && L.check.s !== "warn" && L.value != null) res.status = "auto";
+    else { res.status = "review"; if (e.score < AUTO_SCORE) res.notes.unshift("유사도 낮음"); else if (nameStatus !== "auto") res.notes.unshift("비슷한 후보 있음"); }
     res.include = (res.status === "auto" || (res.status === "manual" && dateOk)) && L.value != null;
     if (hasVal && !overwrite) { res.include = false; res.notes.push("기존 값 있음 (덮어쓰기 꺼짐)"); }
     return res;
@@ -803,7 +840,7 @@ const DOTC = { auto: "var(--ok)", review: "var(--warn)", manual: "var(--accent)"
 
 function scoreCell(s) {
   if (!s) return "";
-  const c = s >= 0.85 ? "var(--ok)" : s >= 0.55 ? "var(--warn)" : "var(--bad)";
+  const c = s >= AUTO_SCORE ? "var(--ok)" : s >= REVIEW_SCORE ? "var(--warn)" : "var(--bad)";
   return `<span class="score"><span class="bar"><i style="width:${Math.round(s * 100)}%;background:${c}"></i></span>${s.toFixed(2)}</span>`;
 }
 
