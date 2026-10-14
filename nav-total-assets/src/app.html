@@ -1,0 +1,1103 @@
+<title>총자산 자동입력</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: a working ledger sheet. Inputs on top, the match table as the page's spine, findings and review notes as tabbed reference pages. */
+:root {
+  --paper: #f5f7f6;
+  --sheet: #ffffff;
+  --ink: #18231f;
+  --ink-2: #4d5c56;
+  --rule: #d9e0dc;
+  --rule-strong: #b9c5bf;
+  --accent: #1d6b57;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2efe9;
+  --ok: #1f7a4d;   --ok-bg: #e3f3ea;
+  --warn: #8a5a00; --warn-bg: #fbf0d6;
+  --bad: #a3312b;  --bad-bg: #f8e3e1;
+  --mute: #66726d; --mute-bg: #eceff0;
+  --hl: #fff7db;
+  --f-display: "Gowun Batang", "Nanum Myeongjo", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #0f1513; --sheet: #161e1b; --ink: #e3ebe7; --ink-2: #a3b2ac; --rule: #2a3632; --rule-strong: #3c4b46;
+  --accent: #5fbf9f; --accent-ink: #0b1411; --accent-soft: #1b2e28;
+  --ok: #6fd3a0; --ok-bg: #173126; --warn: #e8bd5c; --warn-bg: #33290f; --bad: #f0928b; --bad-bg: #3a1c1a;
+  --mute: #93a19b; --mute-bg: #222c29; --hl: #2b2814; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #0f1513; --sheet: #161e1b; --ink: #e3ebe7; --ink-2: #a3b2ac; --rule: #2a3632; --rule-strong: #3c4b46;
+  --accent: #5fbf9f; --accent-ink: #0b1411; --accent-soft: #1b2e28;
+  --ok: #6fd3a0; --ok-bg: #173126; --warn: #e8bd5c; --warn-bg: #33290f; --bad: #f0928b; --bad-bg: #3a1c1a;
+  --mute: #93a19b; --mute-bg: #222c29; --hl: #2b2814; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.55; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; display: grid; gap: 24px; }
+@media (max-width: 560px) { .wrap { padding-inline: 16px } }
+h1, h2 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: -0.01em }
+h1 { font-size: 30px; line-height: 1.2 }
+h2 { font-size: 21px; line-height: 1.3 }
+h3 { font-size: 15px; margin: 0; font-weight: 600 }
+p { margin: 0 }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.lede { color: var(--ink-2); max-width: 68ch }
+.eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600 }
+a { color: var(--accent) }
+button, select, input { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+header.top { display: grid; gap: 14px }
+.titlebar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px }
+.privacy { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ok); background: var(--ok-bg); padding: 5px 10px; border-radius: 999px; font-weight: 500 }
+.privacy svg { flex: none }
+nav.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule-strong); overflow-x: auto }
+nav.tabs a { padding: 9px 14px; text-decoration: none; color: var(--ink-2); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent) }
+nav.tabs a:hover { color: var(--ink) }
+
+.inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px }
+.drop { position: relative; border: 1.5px dashed var(--rule-strong); border-radius: var(--r); background: var(--sheet); padding: 16px 18px; display: grid; gap: 6px; cursor: pointer; transition: border-color .15s, background .15s; min-width: 0 }
+.drop:hover, .drop.drag { border-color: var(--accent); background: var(--accent-soft) }
+.drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .step { font-family: var(--f-num); font-size: 12px; color: var(--accent); font-weight: 500 }
+.drop .what { font-weight: 600; font-size: 15px }
+.drop .hint { color: var(--ink-2); font-size: 12.5px }
+.drop .loaded { font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere }
+.drop .loaded b { color: var(--accent) }
+
+.opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 12px 16px }
+.opts label { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2) }
+.opts input[type=date] { border: 1px solid var(--rule-strong); border-radius: 4px; padding: 4px 8px; background: var(--paper) }
+.opts .spacer { flex: 1 }
+.btn { border: 1px solid var(--rule-strong); background: var(--sheet); border-radius: var(--r); padding: 8px 14px; cursor: pointer; font-weight: 500; white-space: nowrap }
+.btn:hover { border-color: var(--accent) }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.btn.primary:hover { filter: brightness(1.07) }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: none }
+
+.summary { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.fchip { display: inline-flex; align-items: baseline; gap: 7px; border: 1px solid var(--rule); background: var(--sheet); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-size: 13px }
+.fchip .n { font-family: var(--f-num); font-weight: 500 }
+.fchip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink) }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; align-self: center }
+.example-flag { font-size: 12px; font-weight: 600; color: var(--warn); background: var(--warn-bg); padding: 3px 9px; border-radius: 4px }
+
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); min-width: 0 }
+.sheet-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--rule) }
+.scroll { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 13px }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top }
+th { font-size: 11.5px; font-weight: 600; color: var(--ink-2); letter-spacing: .03em; background: var(--paper); position: sticky; top: 0; white-space: nowrap }
+td.r, th.r { text-align: right }
+tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent) }
+tr.review td { background: var(--hl) }
+.fund { font-weight: 500; min-width: 15em; max-width: 26em }
+.sub { display: block; color: var(--ink-2); font-size: 11.5px; font-weight: 400 }
+.amount { font-family: var(--f-num); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; font-size: 13px }
+td select { max-width: 22em; width: 100%; border: 1px solid var(--rule-strong); border-radius: 4px; padding: 4px 6px; background: var(--sheet); font-size: 12.5px }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 4px; white-space: nowrap }
+.pill.ok { color: var(--ok); background: var(--ok-bg) }
+.pill.warn { color: var(--warn); background: var(--warn-bg) }
+.pill.bad { color: var(--bad); background: var(--bad-bg) }
+.pill.mute { color: var(--mute); background: var(--mute-bg) }
+.pill.acc { color: var(--accent); background: var(--accent-soft) }
+.score { font-family: var(--f-num); font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap }
+.bar { width: 44px; height: 5px; background: var(--rule); border-radius: 3px; overflow: hidden }
+.bar i { display: block; height: 100% }
+.why { color: var(--ink-2); font-size: 11.5px; display: block; margin-top: 3px; max-width: 26em }
+.empty { padding: 28px 16px; color: var(--ink-2); text-align: center }
+
+.page { display: grid; gap: 22px }
+.page[hidden] { display: none !important }
+.prose { display: grid; gap: 14px; max-width: 74ch }
+.prose ul, .prose ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px }
+.verdict { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: start; background: var(--sheet); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 16px 18px }
+.verdict .q { font-weight: 600; color: var(--ink-2); font-size: 12.5px; grid-column: 1 / -1 }
+.verdict .a { font-family: var(--f-display); font-size: 22px; font-weight: 700; color: var(--accent) }
+.verdict .t { align-self: center; max-width: 64ch }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px }
+.card { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0 }
+.card .st { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.formula { font-family: var(--f-num); font-size: 12.5px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 10px 12px; overflow-x: auto; white-space: pre }
+.yes { color: var(--ok); font-weight: 600 } .no { color: var(--mute) } .part { color: var(--warn); font-weight: 600 }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: var(--r); font-size: 13px; max-width: calc(100vw - 32px); z-index: 10 }
+.busy { display: inline-flex; gap: 8px; align-items: center; color: var(--ink-2); font-size: 13px }
+.spin { width: 14px; height: 14px; border: 2px solid var(--rule-strong); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.8s linear infinite }
+@keyframes sp { to { transform: rotate(360deg) } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none } * { transition: none !important } }
+details.ledgers summary { cursor: pointer; padding: 12px 16px; font-weight: 600 }
+details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
+.err { color: var(--bad) }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titlebar">
+      <div style="display:grid;gap:6px;min-width:0">
+        <span class="eyebrow">분기 보유펀드 · 기준가격대장 / 신탁재산명세부</span>
+        <h1>총자산 자동입력</h1>
+      </div>
+      <span class="privacy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>파일은 이 브라우저 안에서만 처리됩니다</span>
+    </div>
+    <p class="lede">대상 엑셀과 펀드별 기준가격대장(Excel·PDF)을 올리면, 펀드명이 조금씩 달라도 가장 가까운 장부를 찾아 총자산을 읽고, 순자산+부채로 다시 맞춰 본 뒤 원본 양식 그대로 총자산 칸만 채워 저장합니다.</p>
+    <nav class="tabs" aria-label="섹션">
+      <a href="#work" data-tab="work" aria-current="page">작업</a>
+      <a href="#findings" data-tab="findings">추출 가능 항목 검토</a>
+      <a href="#internal" data-tab="internal">내부 사용 검토</a>
+      <a href="#rules" data-tab="rules">매칭·산출 규칙</a>
+    </nav>
+  </header>
+
+  <!-- ============ 작업 ============ -->
+  <section class="page" id="page-work">
+    <div class="inputs">
+      <label class="drop" id="dropTarget">
+        <span class="step">1단계</span>
+        <span class="what">총자산을 채울 대상 엑셀</span>
+        <span class="hint">예: 2026 2Q 구조화기업 명세 .xlsx — ‘종목명’과 ‘총자산’ 열이 있는 시트를 자동으로 찾습니다</span>
+        <span class="loaded" id="targetInfo"></span>
+        <input id="targetFile" type="file" accept=".xlsx,.xlsm">
+      </label>
+      <label class="drop" id="dropLedgers">
+        <span class="step">2단계</span>
+        <span class="what">펀드별 기준가격대장 (여러 개)</span>
+        <span class="hint">xlsx · xls · csv · PDF 혼합 가능. 폴더째 끌어다 놓아도 됩니다</span>
+        <span class="loaded" id="ledgerInfo"></span>
+        <input id="ledgerFiles" type="file" multiple accept=".xlsx,.xls,.xlsm,.csv,.pdf,.htm,.html">
+      </label>
+    </div>
+
+    <div class="opts">
+      <label for="baseDate">기준일 <input id="baseDate" type="date"></label>
+      <label for="overwrite"><input id="overwrite" type="checkbox"> 이미 값이 있는 칸도 덮어쓰기</label>
+      <span class="spacer"></span>
+      <span id="busy" class="busy" hidden><span class="spin"></span><span id="busyText">읽는 중…</span></span>
+      <button class="btn" id="btnCsv" disabled>매칭 결과 CSV</button>
+      <button class="btn primary" id="btnSave" disabled>총자산 입력한 엑셀 저장</button>
+    </div>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3 id="tableTitle">매칭 결과</h3>
+        <span style="font-size:12.5px;color:var(--ink-2)">‘입력’에 체크된 행만 저장됩니다 · 매칭이 틀리면 장부를 직접 고르세요 (선택은 이 브라우저에 기억됩니다)</span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>입력</th><th class="r">행</th><th>종목명 (대상 엑셀)</th><th>기준가격대장</th><th>유사도</th><th class="r">총자산 (원)</th><th>검증</th><th>장부 기준일</th><th>상태</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <details class="sheet ledgers" id="ledgerPanel">
+      <summary>장부별 추출값 <span id="ledgerCount" style="font-weight:400;color:var(--ink-2)"></span></summary>
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th>파일</th><th>인식한 펀드명</th><th>기준일</th><th class="r">총자산</th><th class="r">순자산</th><th class="r">부채</th><th class="r">기준가</th><th>산출 근거</th><th>매칭된 행</th>
+          </tr></thead>
+          <tbody id="ledgerBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <div class="opts" style="font-size:13px">
+      <span style="color:var(--ink-2)">저장된 펀드명 매핑 <b class="num" id="mapCount">0</b>건</span>
+      <span class="spacer"></span>
+      <button class="btn" id="btnMapExport">매핑 내보내기 (JSON)</button>
+      <label class="btn" for="mapImport" style="position:relative">매핑 가져오기<input id="mapImport" type="file" accept=".json" style="position:absolute;inset:0;opacity:0;width:100%;cursor:pointer"></label>
+      <button class="btn" id="btnMapClear">매핑 초기화</button>
+    </div>
+  </section>
+
+  <!-- ============ 추출 가능 항목 검토 ============ -->
+  <section class="page" id="page-findings" hidden>
+    <div class="prose">
+      <span class="eyebrow">완료조건 확인</span>
+      <h2>기준가격대장에서 자동으로 확인할 수 있는 값이 총자산뿐인가?</h2>
+    </div>
+    <div class="verdict">
+      <span class="q">결론</span>
+      <span class="a">아니오</span>
+      <p class="t">받은 신탁재산명세부 세 가지 양식 모두 계정과목별 당일잔액을 담은 시산표 형식이라, 총자산 외에 순자산·부채·기준가 등도 같은 방식으로 읽을 수 있습니다. 다만 요청 범위에 맞춰 <b>현재 엑셀에 입력하는 값은 총자산 하나</b>이고, 나머지는 ‘장부별 추출값’에 검증용으로만 보여 줍니다. 추가할 항목은 확인 후 넣습니다.</p>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-head"><h3>양식별 추출 가능 항목</h3><span style="font-size:12.5px;color:var(--ink-2)">샘플 3개 기준 · 금액과 펀드명은 표시하지 않음</span></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>항목</th><th>양식 A<span class="sub">계정원장 및 기준가격대장 · 5자리 계정코드 · .xls</span></th><th>양식 B<span class="sub">기준가격대장 조회 · 10자리 계정코드 · .xlsx</span></th><th>양식 C<span class="sub">기준가격대장 · 6자리 계정코드 · .xls</span></th><th>엑셀 입력</th></tr></thead>
+          <tbody>
+            <tr><td><b>총자산</b><span class="sub">평가손익 반영 후 신탁재산 총자산</span></td><td class="yes">신탁자산총자산</td><td class="yes">신탁재산총자산</td><td class="part">계정 없음 → 순자산총액+부채합계</td><td><span class="pill ok">입력 중</span></td></tr>
+            <tr><td>순자산총액</td><td class="yes">신탁재산순자산총액</td><td class="yes">신탁재산순자산총액</td><td class="yes">순자산총액</td><td><span class="pill mute">확인 필요</span></td></tr>
+            <tr><td>부채총액</td><td class="yes">부채 / 신탁자산총부채</td><td class="yes">[[ 부채 ]]</td><td class="yes">부채합계</td><td><span class="pill mute">확인 필요</span></td></tr>
+            <tr><td>기준가격</td><td class="yes">수익증권기준가격</td><td class="yes">수익증권기준가격</td><td class="yes">기준가</td><td><span class="pill mute">확인 필요</span></td></tr>
+            <tr><td>수익증권 좌수 / 원본</td><td class="yes">수익증권잔존좌수</td><td class="part">원본액</td><td class="part">원본합계</td><td><span class="pill mute">확인 필요</span></td></tr>
+            <tr><td>기준일</td><td class="yes">기준가산출일자</td><td class="part">파일명에서만</td><td class="part">파일명에서만</td><td><span class="pill acc">검증에 사용</span></td></tr>
+            <tr><td>펀드명 · 펀드코드</td><td class="yes">본문</td><td class="no">본문에 없음 (파일명 사용)</td><td class="yes">본문</td><td><span class="pill acc">매칭에 사용</span></td></tr>
+            <tr><td>설정일 · 해지(만기)일</td><td class="yes">본문</td><td class="no">없음</td><td class="no">없음</td><td><span class="pill mute">확인 필요</span></td></tr>
+            <tr><td>수탁사 · 사무수탁사 · 보수율</td><td class="yes">본문</td><td class="no">없음</td><td class="no">없음</td><td><span class="pill mute">확인 필요</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>총자산은 ‘자산’ 계정 잔액과 다를 수 있습니다</h3>
+        <p>양식 A·B의 맨 위 <b>자산</b> 계정은 평가손익이 빠진 장부가입니다. 해외자산 평가손익이 큰 펀드에서는 신탁재산 총자산과 수십억 원 차이가 납니다. 그래서 프로그램은 ‘자산’ 계정을 그대로 쓰지 않고 아래 순서로 값을 정합니다.</p>
+        <div class="formula">1순위  신탁재산총자산 · 신탁자산총자산 계정
+2순위  신탁재산순자산총액 + 부채총액
+3순위  자산합계 (장부가일 수 있어 ‘검토’ 표시)
+
+검증   총자산 = 순자산총액 + 부채  (10원 이내면 일치)</div>
+      </div>
+      <div class="card">
+        <h3>샘플 3개 검증 결과</h3>
+        <p>세 양식 모두 1·2순위 값이 원 단위까지 일치했습니다. 양식 C는 총자산 계정이 따로 없지만, 순자산총액+부채합계가 ‘자산합계’와 정확히 같아 평가가 반영된 값임을 확인했습니다.</p>
+        <div class="st"><span class="pill ok">양식 A 일치</span><span class="pill ok">양식 B 일치</span><span class="pill ok">양식 C 일치</span></div>
+        <p style="color:var(--ink-2);font-size:12.5px">양식 C를 PDF로 바꿔 읽혔을 때도 엑셀과 같은 총자산이 나왔습니다. 다만 사무수탁사가 직접 만든 PDF 원본은 아직 받지 못했으니, PDF 장부 한두 개로 한 번 더 확인하는 것이 좋습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 내부 사용 검토 ============ -->
+  <section class="page" id="page-internal" hidden>
+    <div class="prose">
+      <span class="eyebrow">사내 사용 가능 여부</span>
+      <h2>내부 사용 검토</h2>
+      <p class="lede">정보보호·IT 부서 검토 때 확인할 사항을 정리했습니다. 결론부터 말하면 펀드 데이터가 외부로 나가는 경로는 없고, 남는 쟁점은 외부 라이브러리 출처와 사내 DRM입니다.</p>
+    </div>
+    <div class="sheet">
+      <div class="scroll">
+        <table>
+          <thead><tr><th>검토 항목</th><th>현황</th><th>판단</th></tr></thead>
+          <tbody>
+            <tr><td><b>데이터 외부 전송</b></td><td>올린 파일은 브라우저 메모리에서만 읽고 씁니다. 서버 업로드·API 호출·분석 도구가 없습니다. 저장도 사용자 PC로 내려받는 방식입니다.</td><td><span class="pill ok">적합</span></td></tr>
+            <tr><td><b>설치·권한</b></td><td>설치 파일, 매크로(VBA), 관리자 권한이 필요 없습니다. 웹 페이지 하나로 동작합니다.</td><td><span class="pill ok">적합</span></td></tr>
+            <tr><td><b>원본 파일 변경 범위</b></td><td>원본 엑셀을 열어 총자산 칸의 값만 XML 수준에서 바꿉니다. 서식·데이터 유효성·다른 시트는 그대로 두고, 원본 파일은 덮어쓰지 않고 새 파일로 저장합니다.</td><td><span class="pill ok">적합</span></td></tr>
+            <tr><td><b>외부 라이브러리</b></td><td>SheetJS 0.18.5 (Apache-2.0), JSZip 3.10.1 (MIT), pdf.js 3.11.174 (Apache-2.0). 이 페이지는 cdnjs에서 불러옵니다. 저장소의 <span class="num">build.mjs</span>로 세 라이브러리를 HTML 하나에 넣은 <b>오프라인판</b>을 만들 수 있어, 외부 접속 없이 사내 PC에서 파일로 열어 쓸 수 있습니다.</td><td><span class="pill warn">오프라인판 권장</span></td></tr>
+            <tr><td><b>알려진 취약점</b></td><td>SheetJS 0.18.5에는 조작된 엑셀을 읽을 때의 프로토타입 오염(CVE-2023-30533)·ReDoS(CVE-2024-22363) 이슈가 있습니다. 사무수탁사에서 받은 내부 장부만 읽는 용도라 위험은 낮지만, 보안 기준이 엄격하면 SheetJS 공식 배포본 0.20.x로 바꿔 오프라인판을 만들면 됩니다.</td><td><span class="pill warn">조건부</span></td></tr>
+            <tr><td><b>사내 DRM 암호화 파일</b></td><td>문서보안(DRM)이 걸린 엑셀·PDF는 브라우저가 내용을 읽을 수 없어 ‘읽기 실패’로 표시됩니다. DRM 해제 또는 반출 승인된 사본을 써야 합니다.</td><td><span class="pill warn">운영 절차 필요</span></td></tr>
+            <tr><td><b>스캔 PDF</b></td><td>글자 정보가 없는 이미지 PDF는 읽지 못합니다(OCR 미포함). 해당 장부는 ‘텍스트 없는 PDF’로 표시됩니다.</td><td><span class="pill mute">수기 확인</span></td></tr>
+            <tr><td><b>claude.ai 접속</b></td><td>이 공개 페이지는 claude.ai에 올라가 있습니다. 사내망에서 접속이 막혀 있으면 오프라인판을 쓰면 됩니다.</td><td><span class="pill mute">환경에 따라</span></td></tr>
+            <tr><td><b>결과 책임</b></td><td>유사도가 낮거나 검증이 맞지 않는 행은 ‘검토’로 표시되고 기본적으로 입력에서 빠집니다. 담당자가 확인하고 체크해야 저장됩니다.</td><td><span class="pill ok">통제 있음</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 규칙 ============ -->
+  <section class="page" id="page-rules" hidden>
+    <div class="grid2">
+      <div class="card">
+        <span class="eyebrow">펀드명 매칭</span>
+        <h3>같은 펀드를 다르게 적어도 찾는 방법</h3>
+        <ol>
+          <li><b>정규화</b> — 띄어쓰기·괄호·전각문자를 없애고 Ⅲ→III, 대소문자를 통일합니다.</li>
+          <li><b>공통어 제거</b> — 전문투자형사모, 일반사모, 투자신탁, 재간접, 제·호 등 펀드명마다 붙는 말을 빼고 핵심 이름만 비교합니다.</li>
+          <li><b>별칭</b> — UP→유나이티드파트너스, 블랙록→블랙락처럼 약칭을 맞춥니다.</li>
+          <li><b>호수·종류는 정확히</b> — 89호1종과 89호2종, 67호와 67-1호처럼 숫자가 다르면 점수를 크게 깎습니다.</li>
+          <li><b>운용사 가점</b> — 장부 머리글의 운용사명이 종목명 앞부분과 같으면 가점을 줍니다.</li>
+          <li><b>1:1 배정</b> — 점수가 높은 쌍부터 배정해 한 장부가 두 펀드에 붙지 않게 합니다. 같은 종목명이 여러 행이면 모두 같은 값을 넣습니다.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <span class="eyebrow">상태 기준</span>
+        <h3>자동 · 검토 · 미매칭</h3>
+        <table>
+          <tbody>
+            <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상, 2순위 후보와 차이 0.08 이상, 순자산+부채 검증 통과, 기준일 일치. 기본으로 입력됩니다.</td></tr>
+            <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 검증 불일치, 기준일 상이, 장부가 자산합계 사용 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
+            <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 브라우저에 저장돼 다음 분기에도 그대로 붙습니다.</td></tr>
+            <tr><td><span class="pill bad">미매칭</span></td><td>맞는 장부가 없거나 점수가 너무 낮음. PEF·비상장주식처럼 기준가격대장이 없는 종목은 보통 여기에 남습니다.</td></tr>
+            <tr><td><span class="pill mute">제외</span></td><td>총자산 칸에 ‘제외’ 같은 글자가 적힌 행(예: MMF). 건드리지 않습니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+/* ====================================================================
+   총자산 자동입력 — 모든 처리는 브라우저 안에서만 일어난다.
+   ==================================================================== */
+"use strict";
+const PDF_WORKER_CDN = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+if (window.pdfjsLib) {
+  const inlineWorker = document.getElementById("pdf-worker-src");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = inlineWorker
+    ? URL.createObjectURL(new Blob([inlineWorker.textContent], { type: "text/javascript" }))
+    : PDF_WORKER_CDN;
+}
+const downloadsP = (window.claude && window.claude.use) ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null);
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (n) => (n == null || isNaN(n)) ? "" : Math.round(n).toLocaleString("ko-KR");
+const fmtNav = (n) => (n == null || isNaN(n)) ? "" : n.toLocaleString("ko-KR", { maximumFractionDigits: 6 });
+
+/* ---------- 텍스트 정규화 ---------- */
+const nfkc = (s) => String(s ?? "").normalize("NFKC");
+const normLabel = (s) => nfkc(s).replace(/[\s\[\]▶:：·]/g, "");
+const ALIASES = [
+  [/(^|[^A-Z])UP(?=[^A-Z]|$)/g, "$1유나이티드파트너스"],
+  [/BLACKROCK/g, "블랙락"], [/블랙록/g, "블랙락"],
+  [/SAMSUNG/g, "삼성"], [/SHINHAN/g, "신한"], [/KIWOOM/g, "키움"], [/HANA(?![A-Z])/g, "하나"],
+  [/IGIS/g, "이지스"], [/HYUNDAI/g, "현대"], [/KYOBO/g, "교보"], [/MIRAE/g, "미래에셋"],
+];
+function normName(s) {
+  let t = nfkc(s).toUpperCase();
+  for (const [re, rep] of ALIASES) t = t.replace(re, rep);
+  return t.replace(/[^가-힣A-Z0-9]/g, "");
+}
+const STOP = ["전문투자형사모", "전문투자형", "일반사모", "전문사모", "사모", "공모", "투자신탁", "투자회사", "투자조합",
+  "신탁", "투자", "펀드", "재간접형", "재간접", "증권", "자투자", "모투자", "유한회사", "주식회사", "전문", "일반", "CLASS", "클래스"];
+function coreName(s) {
+  let t = normName(s);
+  for (const w of STOP) t = t.split(w).join("");
+  return t.replace(/제(?=\d)/g, "").replace(/(\d)(호|종)/g, "$1");
+}
+function nums(s) {
+  const m = nfkc(s).match(/\d+/g) || [];
+  return [...new Set(m.filter((x) => x.length < 6).map((x) => String(+x)))].sort();
+}
+const sameSet = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+function bigrams(s) { const out = []; for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2)); return out; }
+function dice(a, b) {
+  if (!a.length || !b.length) return 0;
+  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+  const A = bigrams(a), B = bigrams(b), m = new Map();
+  for (const g of A) m.set(g, (m.get(g) || 0) + 1);
+  let hit = 0;
+  for (const g of B) { const c = m.get(g); if (c) { hit++; m.set(g, c - 1); } }
+  return (2 * hit) / (A.length + B.length);
+}
+function lcsRatio(a, b) {
+  if (!a.length || !b.length) return 0;
+  let prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [0];
+    for (let j = 1; j <= b.length; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    prev = cur;
+  }
+  return (2 * prev[b.length]) / (a.length + b.length);
+}
+
+/* 대상 종목명과 장부 하나의 유사도 (0~1) */
+function scoreName(target, ledger) {
+  const tn = normName(target), tc = coreName(target), tnum = nums(target);
+  let best = 0, why = "";
+  for (const cand of ledger.nameCands) {
+    if (!cand) continue;
+    if (normName(cand) === tn) return { score: 1, why: "펀드명 완전 일치" };
+    const cc = coreName(cand), cnum = nums(cand);
+    let s = 0.5 * dice(tc, cc) + 0.5 * lcsRatio(tc, cc);
+    let w = "이름 유사";
+    if (tnum.length && cnum.length) {
+      if (sameSet(tnum, cnum)) { s = s * 0.85 + 0.15; w += " · 호수 일치"; }
+      else if (!tnum.some((x) => cnum.includes(x))) { s *= 0.35; w += " · 호수 다름"; }
+      else { s *= 0.6; w += " · 호수 일부만 일치"; }
+    } else if (tnum.length !== cnum.length) { s *= 0.8; }
+    if (s > best) { best = s; why = w; }
+  }
+  const mgr = normName(ledger.manager || "");
+  if (mgr && tn.length >= 4) {
+    if (mgr.includes(tn.slice(0, 4))) { best += 0.1; why += " · 운용사 일치"; }
+    else if (/[가-힣]{2}/.test(tn.slice(0, 2)) && mgr.includes(tn.slice(0, 2))) { best += 0.04; }
+  }
+  return { score: Math.min(1, best), why };
+}
+
+/* ---------- 숫자·날짜 ---------- */
+function toNum(v) {
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  if (typeof v !== "string") return null;
+  let t = v.trim().replace(/\s/g, "");
+  if (!/\d/.test(t)) return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
+  if (!/^-?[\d,]+(\.\d+)?$/.test(t)) return null;
+  if (t.includes(",") && !/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) return null;
+  const n = parseFloat(t.replace(/,/g, ""));
+  return isNaN(n) ? null : (neg ? -n : n);
+}
+const pad = (n) => String(n).padStart(2, "0");
+const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+function validYMD(y, m, d) { return y >= 2000 && y <= 2099 && m >= 1 && m <= 12 && d >= 1 && d <= 31; }
+function dateFromText(s) {
+  const t = nfkc(s);
+  let found = null, re = /(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/g, m;
+  while ((m = re.exec(t))) if (validYMD(+m[1], +m[2], +m[3])) found = iso(+m[1], +m[2], +m[3]);
+  if (found) return found;
+  re = /(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/g;
+  while ((m = re.exec(t))) if (validYMD(+m[1], +m[2], +m[3])) found = iso(+m[1], +m[2], +m[3]);
+  return found;
+}
+function dateFromFileName(s) {
+  const d = dateFromText(s);
+  if (d) return d;
+  const m = nfkc(s).match(/(?<!\d)(\d{2})(\d{2})(\d{2})(?!\d)/);
+  if (m && +m[1] >= 15 && +m[1] <= 45 && validYMD(2000 + +m[1], +m[2], +m[3])) return iso(2000 + +m[1], +m[2], +m[3]);
+  return null;
+}
+function serialToISO(n) {
+  if (typeof n !== "number" || n < 30000 || n > 80000) return null;
+  const d = new Date(Math.round((n - 25569) * 86400000));
+  return iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}
+function cleanFileName(name) {
+  let t = nfkc(name).replace(/\.[^.]+$/, "");
+  t = t.replace(/(\d{6,8})[\s_\-]*(\(\d+\)|_\d)\s*$/, "$1").replace(/\s*\(\d+\)\s*$/, "");
+  t = t.replace(/20\d{6}|(?<!\d)\d{6}(?!\d)/g, " ");
+  t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|재산명세부|명세부|계정원장|원장|조회|사본|복사본/g, " ");
+  return t.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/* ---------- 장부 읽기: 모든 형식을 '행 = 셀 목록 {c, v}'로 통일 ---------- */
+function rowsFromSheet(ws) {
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true });
+  return aoa.map((r) => (r || []).map((v, j) => {
+    if (v == null || v === "") return null;
+    if (typeof v === "string") { const n = toNum(v); return { c: j, v: n == null ? v : n }; }
+    return { c: j, v };
+  }).filter(Boolean));
+}
+async function rowsFromPdf(buf) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  const rows = []; let textLen = 0;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter((it) => it.str && it.str.trim()).map((it) => ({ x: it.transform[4], y: it.transform[5], w: it.width, s: it.str }));
+    textLen += items.reduce((a, b) => a + b.s.trim().length, 0);
+    items.sort((a, b) => b.y - a.y || a.x - b.x);
+    const lines = [];
+    for (const it of items) {
+      const ln = lines.find((l) => Math.abs(l.y - it.y) <= 2.5);
+      if (ln) ln.items.push(it); else lines.push({ y: it.y, items: [it] });
+    }
+    lines.sort((a, b) => b.y - a.y);
+    for (const ln of lines) {
+      ln.items.sort((a, b) => a.x - b.x);
+      const merged = [];
+      for (const it of ln.items) {
+        const last = merged[merged.length - 1];
+        if (last && it.x - (last.x + last.w) < 1.2) { last.s += it.s; last.w = it.x + it.w - last.x; }
+        else merged.push({ ...it });
+      }
+      rows.push(merged.map((m) => { const s = m.s.trim(); const n = toNum(s); return { c: m.x + m.w / 2, r: m.x + m.w, v: n == null ? s : n }; }));
+    }
+  }
+  if (textLen < 20) throw new Error("텍스트가 없는 PDF(스캔본)라 읽을 수 없습니다. 수기로 확인하세요.");
+  return rows;
+}
+
+const FIELDS = {
+  total: ["신탁재산총자산", "신탁자산총자산", "신탁재산총자산(감사보수기준)", "신탁자산총자산(감사보수기준)", "총자산", "총자산액", "자산총액", "펀드총자산"],
+  net: ["신탁재산순자산총액", "신탁자산순자산총액", "순자산총액", "신탁재산순자산", "순자산"],
+  liab: ["신탁자산총부채", "신탁재산총부채", "부채", "부채합계", "부채총계", "부채총액", "총부채"],
+  asset: ["자산", "자산합계", "자산총계"],
+  nav: ["수익증권기준가격", "수익증권기준가액", "기준가격", "기준가"],
+  units: ["수익증권잔존좌수", "잔존좌수", "수익증권좌수", "발행좌수", "총좌수"],
+};
+const AMOUNT_FIELDS = ["total", "net", "liab", "asset"];
+
+/* '당일잔액'이 있는 차변/대변 머리행 */
+function headerAt(row) {
+  const texts = row.filter((c) => typeof c.v === "string");
+  const joined = texts.map((c) => normLabel(c.v)).join("");
+  if (!(/당일/.test(joined) && /(잔액|잔고)/.test(joined))) return null;
+  const dang = texts.filter((c) => /당일/.test(normLabel(c.v)) && !/증감/.test(normLabel(c.v))).map((c) => c.c);
+  if (!dang.length) return null;
+  // PDF 셀은 오른쪽 끝(r)을 가진다 → 머리글 시작 위치 = 2·중심 − 오른쪽 끝
+  const starts = row.filter((c) => c.r != null).map((c) => ({ c: c.c, start: 2 * c.c - c.r })).sort((a, b) => a.start - b.start);
+  return { cols: row.map((c) => c.c), left: Math.min(...dang), right: Math.max(...dang), starts };
+}
+function extractFromRows(rows) {
+  const out = { fields: {}, meta: {}, hasHeader: false };
+  let header = null;
+  const found = {};
+  const isStr = (cell) => typeof cell.v === "string";
+
+  rows.forEach((row, i) => {
+    const texts = row.filter(isStr);
+    const joined = texts.map((c) => normLabel(c.v)).join("");
+    const h = headerAt(row);
+    if (h) {
+      header = h;
+      out.hasHeader = true; out.meta.headerRow ??= i;
+      return;
+    }
+    if (!texts.length) return;
+    const labels = new Set(texts.map((c) => normLabel(c.v)));
+    if (texts.length > 1) labels.add(joined);
+    for (const [field, names] of Object.entries(FIELDS)) {
+      const pri = names.findIndex((n) => labels.has(n));
+      if (pri < 0) continue;
+      if (found[field] && found[field].pri <= pri) continue;
+      let left = null, right = null, first = null;
+      const labelCol = Math.max(...texts.filter((c) => names.includes(normLabel(c.v)) || labels.has(joined)).map((c) => c.c));
+      for (const cell of row) {
+        if (typeof cell.v !== "number") continue;
+        if (header) {
+          let near = header.cols[0], d = Infinity;
+          if (cell.r != null && header.starts.length) {
+            // PDF: 숫자는 오른쪽 정렬 — 숫자 오른쪽 끝보다 왼쪽에서 시작하는 마지막 머리글이 그 열
+            const hs = header.starts.filter((x) => x.start <= cell.r + 2);
+            near = hs.length ? hs[hs.length - 1].c : header.starts[0].c;
+          } else for (const hc of header.cols) { const dd = Math.abs(hc - cell.c); if (dd < d) { d = dd; near = hc; } }
+          if (near === header.left && left == null) left = cell.v;
+          else if (near === header.right && right == null) right = cell.v;
+        } else if (cell.c > labelCol && first == null) first = cell.v;
+      }
+      let v;
+      if (header) {
+        const pref = field === "liab" ? [right, left] : [left, right];
+        v = pref.find((x) => x != null && x !== 0) ?? pref.find((x) => x != null) ?? null;
+      } else v = first;
+      if (v == null) continue;
+      found[field] = { pri, v, label: names[pri] };
+    }
+  });
+  for (const [k, f] of Object.entries(found)) out.fields[k] = f;
+  return out;
+}
+
+function extractMeta(rows, upto) {
+  const meta = {};
+  const lim = Math.min(rows.length, upto ?? 15);
+  for (let i = 0; i < lim; i++) {
+    const row = rows[i];
+    row.forEach((cell, k) => {
+      if (typeof cell.v !== "string") return;
+      const raw = nfkc(cell.v).trim(), tl = raw.replace(/\s/g, "");
+      if (/^펀드명/.test(tl)) {
+        const rest = raw.replace(/^\s*펀\s*드\s*명\s*[:：▶]?\s*/, "").trim();
+        if (/[가-힣A-Za-z]/.test(rest)) meta.name ??= rest;
+        else for (const c of row.slice(k + 1)) {
+          if (typeof c.v === "number") meta.code ??= String(c.v);
+          else if (/[가-힣A-Za-z]/.test(c.v)) { meta.name ??= nfkc(c.v).trim(); break; }
+        }
+        return;
+      }
+      let m = tl.match(/^펀드(코드)?[:：]([A-Za-z0-9\-]+)$/);
+      if (m) { meta.code ??= m[2]; return; }
+      if (/(기준가?산출일자|기준일자|기준일|작업일자|기준가격일자?|조회일자?|평가일자?)/.test(tl)) {
+        let d = dateFromText(raw);
+        if (!d) for (const c of row.slice(k + 1)) { d = typeof c.v === "number" ? serialToISO(c.v) : dateFromText(c.v); if (d) break; }
+        if (d) meta.date ??= d;
+      }
+      if (!meta.manager && (meta.headerRow == null) && /(자산운용|운용㈜|투자운용|ASSETMANAGEMENT|INVESTMENT|INVESTMENTTRUST)/i.test(tl)) meta.manager = raw;
+      m = tl.match(/단위[:：]?\(?(천원|백만원|억원|원)/);
+      if (m) meta.unit = m[1];
+    });
+  }
+  if (!meta.date) for (let i = 0; i < lim; i++) for (const c of rows[i]) if (typeof c.v === "string") { const d = dateFromText(c.v); if (d) { meta.date = d; break; } }
+  return meta;
+}
+
+const UNIT_MULT = { "원": 1, "천원": 1e3, "백만원": 1e6, "억원": 1e8 };
+
+async function parseLedger(file, id) {
+  const L = { id, fileName: file.name, size: file.size, nameCands: [], fields: {}, meta: {} };
+  try {
+    const buf = await file.arrayBuffer();
+    const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
+    let sheets = [];
+    if (ext === "pdf") sheets.push(await rowsFromPdf(buf));
+    else {
+      let wb;
+      try { wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false, cellStyles: false, cellHTML: false }); }
+      catch (e) { throw new Error("엑셀로 열 수 없습니다. 암호·DRM이 걸려 있는지 확인하세요."); }
+      sheets = wb.SheetNames.map((n) => rowsFromSheet(wb.Sheets[n]));
+    }
+    let best = null;
+    for (const rows of sheets) {
+      const ex = extractFromRows(rows);
+      const meta = extractMeta(rows, ex.meta.headerRow);
+      const rank = Object.keys(ex.fields).length + (ex.hasHeader ? 2 : 0);
+      if (!best || rank > best.rank) best = { rank, ex, meta };
+    }
+    if (!best) throw new Error("내용이 비어 있습니다.");
+    L.meta = best.meta;
+    const mult = UNIT_MULT[best.meta.unit] || 1;
+    for (const [k, f] of Object.entries(best.ex.fields)) L.fields[k] = { ...f, v: AMOUNT_FIELDS.includes(k) ? f.v * mult : f.v };
+  } catch (e) {
+    L.error = e.message || String(e);
+  }
+  L.name = L.meta.name || null;
+  L.fileTitle = cleanFileName(file.name);
+  L.nameCands = [L.name, L.fileTitle].filter(Boolean);
+  L.manager = L.meta.manager || "";
+  L.code = L.meta.code || "";
+  L.date = L.meta.date || dateFromFileName(file.name);
+  L.key = normName(L.name || L.fileTitle);
+  computeTotal(L);
+  return L;
+}
+
+function computeTotal(L) {
+  if (L.error) { L.value = null; L.check = { s: "bad", t: "읽기 실패" }; return; }
+  const f = (k) => L.fields[k]?.v ?? null;
+  const total = f("total"), net = f("net"), liab = f("liab"), asset = f("asset");
+  const near = (a, b) => Math.abs(a - b) <= 10;
+  if (total != null) {
+    L.value = total; L.method = L.fields.total.label + " 계정";
+    if (net != null && liab != null) L.check = near(total, net + liab) ? { s: "ok", t: "순자산+부채 일치" } : { s: "warn", t: `순자산+부채와 ${fmt(total - net - liab)}원 차이` };
+    else L.check = { s: "mute", t: "교차검증 값 없음" };
+  } else if (net != null && liab != null) {
+    L.value = net + liab; L.method = `${L.fields.net.label} + ${L.fields.liab.label}`;
+    if (asset != null) L.check = near(asset, L.value) ? { s: "ok", t: "자산합계와 일치" } : { s: "warn", t: "자산합계와 다름(장부가 확인)" };
+    else L.check = { s: "mute", t: "교차검증 값 없음" };
+  } else if (asset != null) {
+    L.value = asset; L.method = L.fields.asset.label + " (장부가일 수 있음)";
+    L.check = { s: "warn", t: "평가 반영 여부 확인" };
+  } else {
+    L.value = null; L.method = ""; L.check = { s: "bad", t: "총자산 계정을 찾지 못함" };
+  }
+}
+
+/* ---------- 대상 엑셀 ---------- */
+async function parseTarget(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false });
+  for (let si = 0; si < wb.SheetNames.length; si++) {
+    const ws = wb.Sheets[wb.SheetNames[si]];
+    if (!ws["!ref"]) continue;
+    const rg = XLSX.utils.decode_range(ws["!ref"]);
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null, blankrows: true });
+    for (let hr = 0; hr < Math.min(15, aoa.length); hr++) {
+      const row = aoa[hr] || [];
+      const find = (re) => row.findIndex((v) => typeof v === "string" && re.test(v.replace(/\s/g, "")));
+      const nameCol = find(/^(종목명|펀드명|상품명)$/) >= 0 ? find(/^(종목명|펀드명|상품명)$/) : find(/종목명|펀드명/);
+      const assetCol = find(/총자산/);
+      if (nameCol < 0 || assetCol < 0) continue;
+      const codeCol = find(/표준코드|ISIN/i), clsCol = find(/유가증권분류|분류/), dateCol = find(/^기준일/);
+      let baseDate = dateFromText(row[assetCol]);
+      const rows = [];
+      for (let i = hr + 1; i < aoa.length; i++) {
+        const r = aoa[i] || [];
+        const name = r[nameCol];
+        if (typeof name !== "string" || !name.trim()) continue;
+        if (!baseDate && dateCol >= 0) baseDate = typeof r[dateCol] === "number" ? serialToISO(r[dateCol]) : dateFromText(r[dateCol]);
+        rows.push({
+          excelRow: rg.s.r + i + 1, name: name.trim(), code: codeCol >= 0 ? (r[codeCol] ?? "") : "",
+          cls: clsCol >= 0 ? (r[clsCol] ?? "") : "", existing: r[assetCol],
+        });
+      }
+      return {
+        fileName: file.name, buf, sheetName: wb.SheetNames[si], sheetIndex: si,
+        assetColLetter: XLSX.utils.encode_col(rg.s.c + assetCol), assetHeader: String(row[assetCol]).replace(/\s+/g, " "),
+        rows, baseDate,
+      };
+    }
+  }
+  throw new Error("‘종목명’과 ‘총자산’ 머리글이 있는 시트를 찾지 못했습니다.");
+}
+
+/* ---------- 매핑 기억 (이 브라우저 전용) ---------- */
+const MAP_KEY = "nav-total-assets.mapping.v1";
+function loadMap() { try { return JSON.parse(localStorage.getItem(MAP_KEY) || "{}") || {}; } catch { return {}; } }
+function saveMap(m) { try { localStorage.setItem(MAP_KEY, JSON.stringify(m)); } catch {} updateMapCount(); }
+let mapping = loadMap();
+function updateMapCount() { $("#mapCount").textContent = Object.keys(mapping).length; }
+
+/* ---------- 매칭 ---------- */
+const state = { target: null, ledgers: [], results: [], filter: "all", example: false };
+
+function runMatching() {
+  const T = state.target, Ls = state.ledgers.filter((l) => !l.error);
+  if (!T) return;
+  const overwrite = $("#overwrite").checked;
+  const base = $("#baseDate").value || T.baseDate;
+  const uniq = [...new Set(T.rows.map((r) => r.name))];
+  const scores = new Map(); // name -> [{id, score, why}]
+  for (const n of uniq) {
+    const list = Ls.map((l) => ({ id: l.id, ...scoreName(n, l) }));
+    scores.set(n, list);
+  }
+  // 호수 유일 일치: 장부 이름이 깨져도 두 자리 이상 호수가 대상 하나와만 맞으면 검토 후보로 올림
+  for (const l of Ls) {
+    const cn = nums(l.name || l.fileTitle);
+    if (!cn.some((x) => x.length >= 2)) continue;
+    const hits = uniq.filter((n) => sameSet(nums(n), cn));
+    if (hits.length === 1) {
+      const e = scores.get(hits[0]).find((x) => x.id === l.id);
+      if (e.score < 0.62) { e.score = 0.62; e.why = "호수만 유일하게 일치"; }
+    }
+  }
+  // 저장된 매핑
+  const forced = new Map();
+  for (const n of uniq) {
+    const key = mapping[normName(n)];
+    if (!key) continue;
+    if (key === "__none__") { forced.set(n, null); continue; }
+    const l = Ls.find((x) => x.key === key);
+    if (l) forced.set(n, l.id);
+  }
+  const assign = new Map(), usedL = new Set();
+  for (const [n, id] of forced) { assign.set(n, id); if (id != null) usedL.add(id); }
+  const pairs = [];
+  for (const [n, list] of scores) if (!assign.has(n)) for (const e of list) if (e.score >= 0.45) pairs.push({ n, ...e });
+  pairs.sort((a, b) => b.score - a.score);
+  for (const p of pairs) {
+    if (assign.has(p.n) || usedL.has(p.id)) continue;
+    if (p.score < 0.55) continue;
+    assign.set(p.n, p.id); usedL.add(p.id);
+  }
+  state.results = T.rows.map((r) => {
+    const list = (scores.get(r.name) || []).slice().sort((a, b) => b.score - a.score);
+    const res = { ...r, cands: list, ledgerId: null, score: 0, why: "", status: "nomatch", include: false, manual: false, notes: [] };
+    const ex = r.existing;
+    if (typeof ex === "string" && ex.trim() && toNum(ex) == null) { res.status = "skip"; res.notes.push(`‘${ex.trim()}’ 표시 행`); return res; }
+    const hasVal = (typeof ex === "number") || (typeof ex === "string" && toNum(ex) != null);
+    const fid = forced.has(r.name);
+    const id = assign.get(r.name);
+    if (id == null) {
+      res.status = fid ? "manual" : "nomatch";
+      if (fid) res.notes.push("매칭 안 함으로 저장됨");
+      else if (list[0] && list[0].score >= 0.3) res.notes.push(`가장 가까운 후보 ${list[0].score.toFixed(2)}`);
+      return res;
+    }
+    const L = state.ledgers.find((l) => l.id === id);
+    const e = list.find((x) => x.id === id) || { score: 1, why: "" };
+    res.ledgerId = id; res.score = fid ? 1 : e.score; res.why = fid ? "저장된 매핑" : e.why;
+    res.value = L.value;
+    const second = list.find((x) => x.id !== id);
+    const margin = e.score - (second ? second.score : 0);
+    const dateOk = !base || !L.date || L.date === base;
+    if (!dateOk) res.notes.push(`기준일 ${L.date} ≠ ${base}`);
+    if (L.check.s === "warn") res.notes.push(L.check.t);
+    if (L.value == null) res.notes.push("총자산 값 없음");
+    if (fid) res.status = "manual";
+    else if (e.score >= 0.85 && margin >= 0.08 && dateOk && L.check.s !== "warn" && L.value != null) res.status = "auto";
+    else { res.status = "review"; if (e.score < 0.85) res.notes.unshift("유사도 낮음"); else if (margin < 0.08) res.notes.unshift("비슷한 후보 있음"); }
+    res.include = (res.status === "auto" || (res.status === "manual" && dateOk)) && L.value != null;
+    if (hasVal && !overwrite) { res.include = false; res.notes.push("기존 값 있음 (덮어쓰기 꺼짐)"); }
+    return res;
+  });
+  render();
+}
+
+/* ---------- 렌더링 ---------- */
+const STATUS = { auto: ["ok", "자동"], review: ["warn", "검토"], manual: ["acc", "수동"], nomatch: ["bad", "미매칭"], skip: ["mute", "제외"] };
+const DOTC = { auto: "var(--ok)", review: "var(--warn)", manual: "var(--accent)", nomatch: "var(--bad)", skip: "var(--mute)" };
+
+function scoreCell(s) {
+  if (!s) return "";
+  const c = s >= 0.85 ? "var(--ok)" : s >= 0.55 ? "var(--warn)" : "var(--bad)";
+  return `<span class="score"><span class="bar"><i style="width:${Math.round(s * 100)}%;background:${c}"></i></span>${s.toFixed(2)}</span>`;
+}
+
+function render() {
+  const R = state.results;
+  const cnt = { all: R.length, auto: 0, review: 0, manual: 0, nomatch: 0, skip: 0 };
+  R.forEach((r) => cnt[r.status]++);
+  const inc = R.filter((r) => r.include).length;
+  const chips = [["all", "전체", null], ["auto", "자동", "auto"], ["review", "검토", "review"], ["manual", "수동", "manual"], ["nomatch", "미매칭", "nomatch"], ["skip", "제외", "skip"]];
+  $("#summary").innerHTML = (state.example ? `<span class="example-flag">예시 데이터 — 실제 파일을 올리면 바뀝니다</span>` : "") +
+    chips.map(([k, label, d]) => `<button class="fchip" data-f="${k}" aria-pressed="${state.filter === k}">${d ? `<span class="dot" style="background:${DOTC[d]}"></span>` : ""}${label} <span class="n">${cnt[k]}</span></button>`).join("") +
+    `<span style="margin-left:auto;font-size:13px;color:var(--ink-2)">입력 예정 <b class="num" style="color:var(--ink)">${inc}</b>행</span>`;
+  const rows = R.filter((r) => state.filter === "all" || r.status === state.filter);
+  const L = (id) => state.ledgers.find((l) => l.id === id);
+  $("#tbody").innerHTML = rows.length ? rows.map((r, i) => {
+    const l = r.ledgerId != null ? L(r.ledgerId) : null;
+    const [pc, pt] = STATUS[r.status];
+    const opts = [`<option value="">— 매칭 안 함 —</option>`].concat(
+      r.cands.filter((c) => c.score >= 0.2 || c.id === r.ledgerId).slice(0, 12).map((c) => {
+        const x = L(c.id);
+        return `<option value="${c.id}" ${c.id === r.ledgerId ? "selected" : ""}>${c.score.toFixed(2)} · ${esc(x.name || x.fileTitle)}</option>`;
+      }),
+      [`<option value="__all">전체 장부에서 고르기…</option>`]
+    ).join("");
+    const disabled = r.status === "skip" || state.example ? "disabled" : "";
+    const canInc = l && l.value != null && r.status !== "skip";
+    return `<tr class="${r.status === "review" ? "review" : ""}" data-idx="${R.indexOf(r)}">
+      <td><input type="checkbox" class="inc" aria-label="${esc(r.name)} 입력" ${r.include ? "checked" : ""} ${canInc && !state.example ? "" : "disabled"}></td>
+      <td class="r num">${r.excelRow}</td>
+      <td class="fund">${esc(r.name)}<span class="sub">${esc(r.cls || "")}${r.code ? " · " + esc(r.code) : ""}</span></td>
+      <td>${r.status === "skip" ? "" : `<select class="pick" aria-label="${esc(r.name)} 장부 선택" ${disabled}>${opts}</select>`}${l ? `<span class="why">${esc(l.fileName)}</span>` : ""}</td>
+      <td>${scoreCell(r.score)}${r.why ? `<span class="why">${esc(r.why)}</span>` : ""}</td>
+      <td class="amount">${l ? fmt(l.value) : (typeof r.existing === "number" ? `<span style="color:var(--ink-2)">${fmt(r.existing)}</span>` : "")}</td>
+      <td>${l ? `<span class="pill ${l.check.s}">${esc(l.check.t)}</span>` : ""}</td>
+      <td class="num" style="white-space:nowrap">${l && l.date ? l.date : ""}</td>
+      <td><span class="pill ${pc}">${pt}</span>${r.notes.length ? `<span class="why">${esc(r.notes.join(" · "))}</span>` : ""}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="9" class="empty">해당하는 행이 없습니다.</td></tr>`;
+
+  // 장부별 추출값
+  const used = new Map();
+  R.forEach((r) => { if (r.ledgerId != null) used.set(r.ledgerId, (used.get(r.ledgerId) || []).concat(r.excelRow)); });
+  $("#ledgerCount").textContent = state.ledgers.length ? `· ${state.ledgers.length}개 파일, 매칭 안 된 장부 ${state.ledgers.filter((l) => !used.has(l.id)).length}개` : "";
+  $("#ledgerBody").innerHTML = state.ledgers.length ? state.ledgers.map((l) => `<tr>
+      <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}</td>
+      <td style="max-width:20em">${l.error ? `<span class="err">${esc(l.error)}</span>` : esc(l.name || l.fileTitle)}${l.code ? `<span class="sub">코드 ${esc(l.code)}</span>` : ""}${l.manager ? `<span class="sub">${esc(l.manager)}</span>` : ""}</td>
+      <td class="num">${l.date || ""}</td>
+      <td class="amount">${fmt(l.value)}</td>
+      <td class="amount">${fmt(l.fields.net?.v)}</td>
+      <td class="amount">${fmt(l.fields.liab?.v)}</td>
+      <td class="amount">${fmtNav(l.fields.nav?.v)}</td>
+      <td style="font-size:12px">${esc(l.method || "")}${l.check ? `<br><span class="pill ${l.check.s}">${esc(l.check.t)}</span>` : ""}</td>
+      <td class="num">${used.has(l.id) ? used.get(l.id).join(", ") : `<span class="pill mute">없음</span>`}</td>
+    </tr>`).join("") : `<tr><td colspan="9" class="empty">장부를 올리면 파일마다 읽은 값이 여기에 나옵니다.</td></tr>`;
+
+  const ready = !!state.target && !state.example;
+  $("#btnSave").disabled = !(ready && inc > 0);
+  $("#btnCsv").disabled = !ready;
+}
+
+/* ---------- 상호작용 ---------- */
+$("#summary").addEventListener("click", (e) => {
+  const b = e.target.closest(".fchip"); if (!b) return;
+  state.filter = b.dataset.f; render();
+});
+$("#tbody").addEventListener("change", (e) => {
+  const tr = e.target.closest("tr"); if (!tr) return;
+  const r = state.results[+tr.dataset.idx];
+  if (e.target.classList.contains("inc")) { r.include = e.target.checked; render(); return; }
+  if (e.target.classList.contains("pick")) {
+    let v = e.target.value;
+    if (v === "__all") {
+      // 전체 장부 목록으로 바꿔 보여 준다
+      const all = state.ledgers.filter((l) => !l.error).map((l) => r.cands.find((c) => c.id === l.id) || { id: l.id, score: 0, why: "" });
+      r.cands = all.sort((a, b) => b.score - a.score).map((c) => ({ ...c, score: Math.max(c.score, 0.2001) }));
+      render(); return;
+    }
+    const key = normName(r.name);
+    if (v === "") mapping[key] = "__none__";
+    else { const l = state.ledgers.find((x) => x.id === +v); mapping[key] = l.key; }
+    saveMap(mapping);
+    runMatching();
+    toast(v === "" ? "이 종목은 매칭하지 않도록 기억했습니다" : "선택한 장부를 이 종목에 기억했습니다");
+  }
+});
+$("#overwrite").addEventListener("change", () => { if (!state.example) runMatching(); });
+$("#baseDate").addEventListener("change", () => { if (!state.example) runMatching(); });
+
+function busy(on, text) { $("#busy").hidden = !on; if (text) $("#busyText").textContent = text; }
+let toastTimer;
+function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), 3200); }
+
+async function onTarget(file) {
+  if (!file) return;
+  busy(true, "대상 엑셀 읽는 중…");
+  try {
+    state.target = await parseTarget(file);
+    if (state.example) { state.example = false; state.ledgers = []; }
+    $("#baseDate").value = state.target.baseDate || "";
+    $("#targetInfo").innerHTML = `<b>${esc(file.name)}</b><br>시트 ‘${esc(state.target.sheetName)}’ · ${state.target.assetColLetter}열 ‘${esc(state.target.assetHeader)}’ · 종목 ${state.target.rows.length}행`;
+    if (state.ledgers.length) runMatching(); else { state.results = state.target.rows.map((r) => ({ ...r, cands: [], ledgerId: null, score: 0, why: "", status: (typeof r.existing === "string" && r.existing.trim() && toNum(r.existing) == null) ? "skip" : "nomatch", include: false, notes: [] })); render(); }
+  } catch (e) { $("#targetInfo").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  busy(false);
+}
+async function onLedgers(files) {
+  files = [...files].filter((f) => /\.(xlsx|xlsm|xls|csv|pdf|html?)$/i.test(f.name) && !/^~\$/.test(f.name));
+  if (!files.length) return;
+  if (state.example) { state.example = false; state.ledgers = []; state.results = []; }
+  const start = state.ledgers.length ? Math.max(...state.ledgers.map((l) => l.id)) + 1 : 0;
+  for (let i = 0; i < files.length; i++) {
+    busy(true, `장부 읽는 중… ${i + 1}/${files.length}`);
+    const existing = state.ledgers.findIndex((l) => l.fileName === files[i].name && l.size === files[i].size);
+    const L = await parseLedger(files[i], start + i);
+    if (existing >= 0) state.ledgers.splice(existing, 1, L); else state.ledgers.push(L);
+  }
+  const bad = state.ledgers.filter((l) => l.error).length;
+  $("#ledgerInfo").innerHTML = `<b>${state.ledgers.length}개</b> 읽음${bad ? ` · <span class="err">읽기 실패 ${bad}개</span>` : ""} · 다시 올리면 추가됩니다`;
+  busy(false);
+  if (state.target) runMatching(); else render();
+}
+$("#targetFile").addEventListener("change", (e) => onTarget(e.target.files[0]));
+$("#ledgerFiles").addEventListener("change", (e) => onLedgers(e.target.files));
+
+async function filesFromDrop(dt) {
+  const out = [];
+  const walk = (entry) => new Promise((res) => {
+    if (entry.isFile) entry.file((f) => { out.push(f); res(); }, () => res());
+    else if (entry.isDirectory) {
+      const rd = entry.createReader(); const all = [];
+      const next = () => rd.readEntries(async (ents) => { if (!ents.length) { for (const en of all) await walk(en); res(); } else { all.push(...ents); next(); } }, () => res());
+      next();
+    } else res();
+  });
+  const items = [...(dt.items || [])].map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  if (items.length) { for (const en of items) await walk(en); return out; }
+  return [...dt.files];
+}
+for (const [id, handler] of [["#dropTarget", (fs) => onTarget(fs[0])], ["#dropLedgers", onLedgers]]) {
+  const el = $(id);
+  el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("drag"); });
+  el.addEventListener("dragleave", () => el.classList.remove("drag"));
+  el.addEventListener("drop", async (e) => { e.preventDefault(); el.classList.remove("drag"); handler(await filesFromDrop(e.dataTransfer)); });
+}
+
+/* ---------- 저장: 원본 XML에서 총자산 칸만 교체 ---------- */
+function colIndex(letters) { let n = 0; for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64); return n; }
+function setCellNumber(xml, ref, value) {
+  const rowNum = +ref.match(/\d+$/)[0], col = ref.match(/^[A-Z]+/)[0];
+  const cellXml = (attrs) => `<c r="${ref}"${attrs}><v>${value}</v></c>`;
+  const rowRe = new RegExp(`<row\\b[^>]*\\br="${rowNum}"[^>]*?(/>|>)`);
+  const rm = rowRe.exec(xml);
+  if (!rm) {
+    // 행이 없으면 순서에 맞춰 새로 만든다
+    const re = /<row\b[^>]*\br="(\d+)"/g; let m, at = xml.indexOf("</sheetData>");
+    while ((m = re.exec(xml))) if (+m[1] > rowNum) { at = m.index; break; }
+    if (xml.includes("<sheetData/>")) return xml.replace("<sheetData/>", `<sheetData><row r="${rowNum}">${cellXml("")}</row></sheetData>`);
+    return xml.slice(0, at) + `<row r="${rowNum}">${cellXml("")}</row>` + xml.slice(at);
+  }
+  if (rm[1] === "/>") {
+    const open = rm[0].slice(0, -2) + ">";
+    return xml.slice(0, rm.index) + open + cellXml("") + "</row>" + xml.slice(rm.index + rm[0].length);
+  }
+  const start = rm.index + rm[0].length, end = xml.indexOf("</row>", start);
+  let inner = xml.slice(start, end);
+  const cRe = new RegExp(`<c\\b([^>]*?)\\br="${ref}"([^>]*?)(/>|>[\\s\\S]*?</c>)`);
+  const cm = cRe.exec(inner);
+  if (cm) {
+    const attrs = (cm[1] + cm[2]).replace(/\s+t="[^"]*"/g, "").replace(/\s+$/, "");
+    inner = inner.slice(0, cm.index) + cellXml(attrs ? " " + attrs.trim() : "") + inner.slice(cm.index + cm[0].length);
+  } else {
+    const want = colIndex(col), re = /<c\b[^>]*\br="([A-Z]+)\d+"/g; let m, at = inner.length;
+    while ((m = re.exec(inner))) if (colIndex(m[1]) > want) { at = m.index; break; }
+    inner = inner.slice(0, at) + cellXml("") + inner.slice(at);
+  }
+  return xml.slice(0, start) + inner + xml.slice(end);
+}
+
+async function buildOutput() {
+  const T = state.target;
+  const zip = await JSZip.loadAsync(T.buf, { createFolders: false });
+  const wbXml = await zip.file("xl/workbook.xml").async("string");
+  const rels = await zip.file("xl/_rels/workbook.xml.rels").async("string");
+  const sheets = [...wbXml.matchAll(/<sheet\b[^>]*>/g)].map((m) => m[0]);
+  const rid = (sheets[T.sheetIndex].match(/r:id="([^"]+)"/) || [])[1];
+  const relTag = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`Id="${rid}"`));
+  let target = relTag.match(/Target="([^"]+)"/)[1];
+  target = target.startsWith("/") ? target.slice(1) : "xl/" + target.replace(/^\.\//, "");
+  let xml = await zip.file(target).async("string");
+  let n = 0;
+  for (const r of state.results) {
+    if (!r.include) continue;
+    const l = state.ledgers.find((x) => x.id === r.ledgerId);
+    if (!l || l.value == null) continue;
+    xml = setCellNumber(xml, `${T.assetColLetter}${r.excelRow}`, Math.round(l.value));
+    n++;
+  }
+  zip.file(target, xml, { createFolders: false });
+  // 열 때 다시 계산하도록
+  const wb2 = /<calcPr\b/.test(wbXml)
+    ? wbXml.replace(/<calcPr\b([^>]*?)(\/?)>/, (m, a, s) => `<calcPr${a.replace(/\s*fullCalcOnLoad="[^"]*"/, "")} fullCalcOnLoad="1"${s}>`)
+    : wbXml.replace("</workbook>", `<calcPr fullCalcOnLoad="1"/></workbook>`);
+  zip.file("xl/workbook.xml", wb2, { createFolders: false });
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return { blob, n };
+}
+
+async function saveFile(filename, blob) {
+  const d = await downloadsP;
+  if (d) {
+    try { await d.save({ filename, data: blob }); toast(`${filename} 저장을 요청했습니다`); return true; }
+    catch (e) { if (e && e.code === "declined") { toast("저장을 취소했습니다"); return false; } if (e && e.code === "rate_limited") { toast("저장 창이 이미 열려 있습니다. 잠시 후 다시 누르세요"); return false; } }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(`${filename} 저장했습니다`);
+  return true;
+}
+
+$("#btnSave").addEventListener("click", async () => {
+  busy(true, "엑셀 만드는 중…");
+  try {
+    const { blob, n } = await buildOutput();
+    const base = state.target.fileName.replace(/\.[^.]+$/, "");
+    await saveFile(`${base}_총자산입력.xlsx`, blob);
+    toast(`총자산 ${n}칸을 채운 파일을 만들었습니다`);
+  } catch (e) { toast("저장 실패: " + (e.message || e)); }
+  busy(false);
+});
+
+$("#btnCsv").addEventListener("click", async () => {
+  const head = ["행", "종목명", "표준코드", "상태", "입력", "유사도", "매칭근거", "기준가격대장 파일", "장부 펀드명", "장부 기준일", "총자산", "산출근거", "검증", "순자산", "부채", "기준가", "메모"];
+  const L = (id) => state.ledgers.find((l) => l.id === id);
+  const lines = [head].concat(state.results.map((r) => {
+    const l = r.ledgerId != null ? L(r.ledgerId) : null;
+    return [r.excelRow, r.name, r.code, STATUS[r.status][1], r.include ? "Y" : "", r.score ? r.score.toFixed(3) : "", r.why, l?.fileName || "", l ? (l.name || l.fileTitle) : "", l?.date || "",
+      l?.value != null ? Math.round(l.value) : "", l?.method || "", l?.check?.t || "", l?.fields.net?.v ?? "", l?.fields.liab?.v ?? "", l?.fields.nav?.v ?? "", r.notes.join(" / ")];
+  }));
+  const csv = "﻿" + lines.map((row) => row.map((v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\r\n");
+  await saveFile(`총자산_매칭결과_${new Date().toISOString().slice(0, 10)}.csv`, new Blob([csv], { type: "text/csv" }));
+});
+
+$("#btnMapExport").addEventListener("click", async () => {
+  await saveFile("총자산_펀드명매핑.json", new Blob([JSON.stringify({ version: 1, mapping }, null, 2)], { type: "application/json" }));
+});
+$("#mapImport").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    const m = j.mapping || j;
+    let k = 0; for (const [a, b] of Object.entries(m)) if (typeof b === "string") { mapping[a] = b; k++; }
+    saveMap(mapping); toast(`매핑 ${k}건을 가져왔습니다`);
+    if (!state.example) runMatching();
+  } catch { toast("매핑 파일 형식이 맞지 않습니다"); }
+  e.target.value = "";
+});
+$("#btnMapClear").addEventListener("click", (e) => {
+  const b = e.currentTarget;
+  if (b.dataset.armed) { mapping = {}; saveMap(mapping); delete b.dataset.armed; b.textContent = "매핑 초기화"; toast("저장된 매핑을 지웠습니다"); if (!state.example) runMatching(); return; }
+  b.dataset.armed = "1"; b.textContent = "한 번 더 누르면 삭제"; setTimeout(() => { delete b.dataset.armed; b.textContent = "매핑 초기화"; }, 3000);
+});
+
+/* ---------- 탭 ---------- */
+function showTab(name) {
+  if (!["work", "findings", "internal", "rules"].includes(name)) name = "work";
+  document.querySelectorAll(".page").forEach((p) => (p.hidden = p.id !== "page-" + name));
+  document.querySelectorAll("nav.tabs a").forEach((a) => a.setAttribute("aria-current", a.dataset.tab === name ? "page" : "false"));
+}
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+showTab(location.hash.slice(1));
+
+/* ---------- 첫 화면: 예시 (가상의 펀드·금액) ---------- */
+function loadExample() {
+  state.example = true;
+  const mk = (id, name, value, date, check, manager) => ({ id, fileName: name + "_기준가격대장_260630.xlsx", name, fileTitle: name, manager, date, value, check, method: check.s === "ok" ? "신탁재산총자산 계정" : "순자산총액 + 부채합계", fields: { net: { v: value * 0.97 }, liab: { v: value * 0.03 }, nav: { v: 1012.34 } }, nameCands: [name], key: normName(name) });
+  state.ledgers = [
+    mk(0, "예시대체일반사모부동산투자신탁12호", 48210500000, "2026-06-30", { s: "ok", t: "순자산+부채 일치" }, "예시대체투자자산운용"),
+    mk(1, "EX글로벌인프라투자신탁3호(전문)", 21730880000, "2026-06-30", { s: "ok", t: "자산합계와 일치" }, "이그잼플자산운용"),
+    mk(2, "예시크레딧일반사모투자신탁7호", 9902000000, "2026-03-31", { s: "ok", t: "순자산+부채 일치" }, "예시자산운용"),
+  ];
+  state.target = null;
+  const row = (excelRow, name, cls, status, lid, score, why, notes, include) => ({ excelRow, name, cls, code: "", cands: lid != null ? [{ id: lid, score, why }] : [], ledgerId: lid, score, why, status, include, notes });
+  state.results = [
+    row(16, "예시대체전문투자형사모부동산투자신탁 12호", "기타수익증권", "auto", 0, 0.97, "이름 유사 · 호수 일치 · 운용사 일치", [], true),
+    row(17, "이그잼플전문투자형사모글로벌인프라신탁제3호", "기타수익증권", "auto", 1, 0.91, "이름 유사 · 호수 일치 · 운용사 일치", [], true),
+    row(18, "예시크레딧전문투자형사모투자신탁7호", "기타수익증권", "review", 2, 0.93, "이름 유사 · 호수 일치", ["기준일 2026-03-31 ≠ 2026-06-30"], false),
+    row(19, "예시법인용MMF 1(국공채)C", "MMF", "skip", null, 0, "", ["‘제외’ 표시 행"], false),
+    row(20, "예시벤처투자조합 2호", "PEF", "nomatch", null, 0, "", [], false),
+  ];
+  render();
+}
+updateMapCount();
+if (!window.XLSX || !window.JSZip) {
+  $("#targetInfo").innerHTML = `<span class="err">엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결 또는 사내 차단 여부를 확인하거나 오프라인판을 쓰세요.</span>`;
+}
+loadExample();
+</script>

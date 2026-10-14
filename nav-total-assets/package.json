@@ -1,0 +1,19 @@
+{
+  "name": "nav-total-assets",
+  "private": true,
+  "version": "1.0.0",
+  "description": "기준가격대장(신탁재산명세부)에서 총자산을 읽어 대상 엑셀에 자동 입력하는 브라우저 도구",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "jszip": "3.10.1",
+    "pdfjs-dist": "3.11.174",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}
