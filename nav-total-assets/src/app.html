@@ -153,7 +153,6 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
     <nav class="tabs" aria-label="섹션">
       <a href="#work" data-tab="work" aria-current="page">작업</a>
       <a href="#findings" data-tab="findings">추출 가능 항목 검토</a>
-      <a href="#internal" data-tab="internal">내부 사용 검토</a>
       <a href="#rules" data-tab="rules">매칭·산출 규칙</a>
     </nav>
   </header>
@@ -272,33 +271,6 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
         <h3>샘플 3개 검증 결과</h3>
         <p>세 양식 모두 1·2순위 값이 원 단위까지 일치했습니다. 양식 C는 총자산 계정이 따로 없지만, 순자산총액+부채합계가 ‘자산합계’와 정확히 같아 평가가 반영된 값임을 확인했습니다.</p>
         <div class="st"><span class="pill ok">양식 A 일치</span><span class="pill ok">양식 B 일치</span><span class="pill ok">양식 C 일치</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ 내부 사용 검토 ============ -->
-  <section class="page" id="page-internal" hidden>
-    <div class="prose">
-      <span class="eyebrow">사내 사용 가능 여부</span>
-      <h2>내부 사용 검토</h2>
-      <p class="lede">정보보호·IT 부서 검토 때 확인할 사항을 정리했습니다. 결론부터 말하면 펀드 데이터가 외부로 나가는 경로는 없고, 남는 쟁점은 외부 라이브러리 출처와 사내 DRM입니다.</p>
-    </div>
-    <div class="sheet">
-      <div class="scroll">
-        <table>
-          <thead><tr><th>검토 항목</th><th>현황</th><th>판단</th></tr></thead>
-          <tbody>
-            <tr><td><b>데이터 외부 전송</b></td><td>올린 파일은 브라우저 메모리에서만 읽고 씁니다. 서버 업로드·API 호출·분석 도구가 없습니다. 저장도 사용자 PC로 내려받는 방식입니다.</td><td><span class="pill ok">적합</span></td></tr>
-            <tr><td><b>설치·권한</b></td><td>설치 파일, 매크로(VBA), 관리자 권한이 필요 없습니다. 웹 페이지 하나로 동작합니다.</td><td><span class="pill ok">적합</span></td></tr>
-            <tr><td><b>원본 파일 변경 범위</b></td><td>원본 엑셀을 열어 총자산 칸의 값만 XML 수준에서 바꿉니다. 서식·데이터 유효성·다른 시트는 그대로 두고, 원본 파일은 덮어쓰지 않고 새 파일로 저장합니다.</td><td><span class="pill ok">적합</span></td></tr>
-            <tr><td><b>외부 라이브러리</b></td><td>SheetJS 0.18.5 (Apache-2.0), JSZip 3.10.1 (MIT). 이 페이지는 cdnjs에서 불러옵니다. 저장소의 <span class="num">build.mjs</span>로 두 라이브러리를 HTML 하나에 넣은 <b>오프라인판</b>을 만들 수 있어, 외부 접속 없이 사내 PC에서 파일로 열어 쓸 수 있습니다.</td><td><span class="pill warn">오프라인판 권장</span></td></tr>
-            <tr><td><b>알려진 취약점</b></td><td>SheetJS 0.18.5에는 조작된 엑셀을 읽을 때의 프로토타입 오염(CVE-2023-30533)·ReDoS(CVE-2024-22363) 이슈가 있습니다. 사무수탁사에서 받은 내부 장부만 읽는 용도라 위험은 낮지만, 보안 기준이 엄격하면 SheetJS 공식 배포본 0.20.x로 바꿔 오프라인판을 만들면 됩니다.</td><td><span class="pill warn">조건부</span></td></tr>
-            <tr><td><b>사내 DRM 암호화 파일</b></td><td>문서보안(DRM)이 걸린 엑셀은 브라우저가 내용을 읽을 수 없어 ‘읽기 실패’로 표시됩니다. DRM 해제 또는 반출 승인된 사본을 써야 합니다.</td><td><span class="pill warn">운영 절차 필요</span></td></tr>
-            <tr><td><b>Vercel 배포판</b></td><td>라이브러리를 내장한 오프라인판을 올리고, 보안 헤더(CSP)로 외부 주소 요청을 브라우저에서 모두 막습니다. 주소를 아는 사람은 열 수 있으니, 사내 인원으로 제한하려면 Vercel의 Deployment Protection을 켭니다.</td><td><span class="pill ok">적합</span></td></tr>
-            <tr><td><b>claude.ai 접속</b></td><td>이 공개 페이지는 claude.ai에 올라가 있습니다. 사내망에서 접속이 막혀 있으면 오프라인판을 쓰면 됩니다.</td><td><span class="pill mute">환경에 따라</span></td></tr>
-            <tr><td><b>결과 책임</b></td><td>유사도가 낮거나 검증이 맞지 않는 행은 ‘검토’로 표시되고 기본적으로 입력에서 빠집니다. 담당자가 확인하고 체크해야 저장됩니다.</td><td><span class="pill ok">통제 있음</span></td></tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </section>
@@ -1129,7 +1101,7 @@ $("#btnMapClear").addEventListener("click", (e) => {
 
 /* ---------- 탭 ---------- */
 function showTab(name) {
-  if (!["work", "findings", "internal", "rules"].includes(name)) name = "work";
+  if (!["work", "findings", "rules"].includes(name)) name = "work";
   document.querySelectorAll(".page").forEach((p) => (p.hidden = p.id !== "page-" + name));
   document.querySelectorAll("nav.tabs a").forEach((a) => a.setAttribute("aria-current", a.dataset.tab === name ? "page" : "false"));
 }
