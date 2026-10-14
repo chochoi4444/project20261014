@@ -307,7 +307,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
           <li><b>정규화</b> — 띄어쓰기·괄호·전각문자를 없애고 Ⅲ→III, 대소문자를 통일합니다.</li>
           <li><b>공통어 제거</b> — 전문투자형사모, 일반사모, 투자신탁, 재간접, 제·호 등 펀드명마다 붙는 말을 빼고 핵심 이름만 비교합니다.</li>
           <li><b>별칭</b> — UP→유나이티드파트너스, 블랙록→블랙락처럼 약칭을 맞춥니다.</li>
-          <li><b>호수·종류는 정확히</b> — 89호1종과 89호2종, 67호와 67-1호처럼 숫자가 다르면 점수를 크게 깎습니다.</li>
+          <li><b>호수·종류는 정확히</b> — 1호와 2호, 89호1종과 89호2종, 67호와 67-1호, 3-1호와 3-3호처럼 숫자가 하나라도 다르면 다른 펀드로 보고 후보에서 뺍니다. 파일명의 날짜·분기(2Q) 표기는 미리 지웁니다.</li>
           <li><b>운용사 가점</b> — 장부 머리글의 운용사명이 종목명 앞부분과 같으면 가점을 줍니다.</li>
           <li><b>1:1 배정</b> — 점수가 높은 쌍부터 배정해 한 장부가 두 펀드에 붙지 않게 합니다. 같은 종목명이 여러 행이면 모두 같은 값을 넣습니다.</li>
         </ol>
@@ -411,9 +411,9 @@ function scoreName(target, ledger) {
     let s = 0.5 * dice(tc, cc) + 0.5 * lcsRatio(tc, cc);
     let w = "이름 유사";
     if (tnum.length && cnum.length) {
+      // 호수·종류(1종/2종, 67호/67-1호, 3-1호/3-3호)가 하나라도 다르면 다른 펀드로 본다
       if (sameSet(tnum, cnum)) { s = s * 0.85 + 0.15; w += " · 호수 일치"; }
-      else if (!tnum.some((x) => cnum.includes(x))) { s *= 0.35; w += " · 호수 다름"; }
-      else { s *= 0.6; w += " · 호수 일부만 일치"; }
+      else { s *= 0.35; w += tnum.some((x) => cnum.includes(x)) ? " · 호수·종류 다름" : " · 호수 다름"; }
     } else if (tnum.length !== cnum.length) { s *= 0.8; }
     if (s > best) { best = s; why = w; }
   }
@@ -466,6 +466,7 @@ function cleanFileName(name) {
   let t = nfkc(name).replace(/\.[^.]+$/, "");
   t = t.replace(/(\d{6,8})[\s_\-]*(\(\d+\)|_\d)\s*$/, "$1").replace(/\s*\(\d+\)\s*$/, "");
   t = t.replace(/20\d{6}|(?<!\d)\d{6}(?!\d)/g, " ");
+  t = t.replace(/(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)/gi, " ").replace(/20\d{2}\s*년/g, " ");
   t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|재산명세부|명세부|계정원장|원장|조회|사본|복사본/g, " ");
   return t.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
 }
