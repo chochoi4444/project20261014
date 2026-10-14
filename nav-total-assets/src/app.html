@@ -192,7 +192,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
     <div class="sheet">
       <div class="sheet-head">
         <h3 id="tableTitle">매칭 결과</h3>
-        <span style="font-size:12.5px;color:var(--ink-2)">‘입력’에 체크된 행만 저장됩니다 · 매칭이 틀리면 장부를 직접 고르세요 (선택은 이 브라우저에 기억됩니다)</span>
+        <span style="font-size:12.5px;color:var(--ink-2)">‘입력’에 체크된 행만 저장됩니다 · 매칭이 틀리면 장부를 직접 고르세요 (선택은 이 화면을 닫으면 사라집니다. 다음에도 쓰려면 아래 ‘매핑 내보내기’)</span>
       </div>
       <div class="scroll">
         <table>
@@ -318,7 +318,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
           <tbody>
             <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상이면서 2순위 후보와 차이 0.08 이상, 또는 유사도 0.75 이상이면서 2순위와 차이 0.40 이상. 여기에 순자산+부채 검증 통과, 기준일 일치까지 맞으면 기본으로 입력됩니다.</td></tr>
             <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 검증 불일치, 기준일 상이, 장부가 자산합계 사용 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
-            <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 브라우저에 저장돼 다음 분기에도 그대로 붙습니다.</td></tr>
+            <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 화면에서만 유지되며, ‘매핑 내보내기’로 받은 파일을 다음에 ‘매핑 가져오기’로 다시 쓸 수 있습니다.</td></tr>
             <tr><td><span class="pill bad">미매칭</span></td><td>맞는 장부가 없거나 점수가 너무 낮음. PEF·비상장주식처럼 기준가격대장이 없는 종목은 보통 여기에 남습니다.</td></tr>
             <tr><td><span class="pill mute">제외</span></td><td>총자산 칸에 ‘제외’ 같은 글자가 적힌 행(예: MMF). 건드리지 않습니다.</td></tr>
           </tbody>
@@ -736,10 +736,12 @@ async function parseTarget(file) {
 }
 
 /* ---------- 매핑 기억 (이 브라우저 전용) ---------- */
+// 매칭 선택은 이 화면에만 둔다. 링크로 다시 들어오면 항상 처음 화면에서 시작한다.
+// (계속 쓰려면 '매핑 내보내기'로 파일을 받아 두고 다음에 '매핑 가져오기')
 const MAP_KEY = "nav-total-assets.mapping.v1";
-function loadMap() { try { return JSON.parse(localStorage.getItem(MAP_KEY) || "{}") || {}; } catch { return {}; } }
-function saveMap(m) { try { localStorage.setItem(MAP_KEY, JSON.stringify(m)); } catch {} updateMapCount(); }
-let mapping = loadMap();
+try { localStorage.removeItem(MAP_KEY); } catch {}
+function saveMap(m) { updateMapCount(); }
+let mapping = {};
 function updateMapCount() { $("#mapCount").textContent = Object.keys(mapping).length; }
 
 /* ---------- 매칭 ---------- */
@@ -810,7 +812,8 @@ function render() {
   R.forEach((r) => cnt[r.status]++);
   const inc = R.filter((r) => r.include).length;
   const chips = [["all", "전체", null], ["auto", "자동", "auto"], ["review", "검토", "review"], ["manual", "수동", "manual"], ["nomatch", "미매칭", "nomatch"], ["skip", "제외", "skip"]];
-  $("#summary").innerHTML = (state.example ? `<span class="example-flag">예시 데이터 — 실제 파일을 올리면 바뀝니다</span>` : "") +
+  $("#summary").hidden = !R.length;
+  $("#summary").innerHTML =
     chips.map(([k, label, d]) => `<button class="fchip" data-f="${k}" aria-pressed="${state.filter === k}">${d ? `<span class="dot" style="background:${DOTC[d]}"></span>` : ""}${label} <span class="n">${cnt[k]}</span></button>`).join("") +
     `<span style="margin-left:auto;font-size:13px;color:var(--ink-2)">입력 예정 <b class="num" style="color:var(--ink)">${inc}</b>행</span>`;
   const rows = R.filter((r) => state.filter === "all" || r.status === state.filter);
@@ -838,7 +841,8 @@ function render() {
       <td class="num" style="white-space:nowrap">${l && l.date ? l.date : ""}</td>
       <td><span class="pill ${pc}">${pt}</span>${r.notes.length ? `<span class="why">${esc(r.notes.join(" · "))}</span>` : ""}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="9" class="empty">해당하는 행이 없습니다.</td></tr>`;
+  }).join("") : (R.length ? `<tr><td colspan="9" class="empty">해당하는 행이 없습니다.</td></tr>`
+    : `<tr><td colspan="9" class="empty"><b>시작하기</b><br>① 위 1단계에 총자산을 채울 엑셀을, ② 2단계에 펀드별 기준가격대장을 올리면<br>펀드마다 매칭된 장부와 총자산이 여기에 나옵니다. 올린 파일은 이 브라우저 안에서만 처리됩니다.</td></tr>`);
 
   // 장부별 추출값
   const used = new Map();
@@ -900,7 +904,7 @@ $("#tbody").addEventListener("change", (e) => {
     else { const l = state.ledgers.find((x) => x.id === +v); mapping[key] = l.key; }
     saveMap(mapping);
     runMatching();
-    toast(v === "" ? "이 종목은 매칭하지 않도록 기억했습니다" : "선택한 장부를 이 종목에 기억했습니다");
+    toast(v === "" ? "이 종목은 매칭하지 않도록 했습니다" : "선택한 장부를 이 종목에 붙였습니다");
   }
 });
 $("#overwrite").addEventListener("change", () => { if (!state.example) runMatching(); });
@@ -1095,7 +1099,7 @@ $("#mapImport").addEventListener("change", async (e) => {
 });
 $("#btnMapClear").addEventListener("click", (e) => {
   const b = e.currentTarget;
-  if (b.dataset.armed) { mapping = {}; saveMap(mapping); delete b.dataset.armed; b.textContent = "매핑 초기화"; toast("저장된 매핑을 지웠습니다"); if (!state.example) runMatching(); return; }
+  if (b.dataset.armed) { mapping = {}; saveMap(mapping); delete b.dataset.armed; b.textContent = "매핑 초기화"; toast("매핑을 지웠습니다"); if (!state.example) runMatching(); return; }
   b.dataset.armed = "1"; b.textContent = "한 번 더 누르면 삭제"; setTimeout(() => { delete b.dataset.armed; b.textContent = "매핑 초기화"; }, 3000);
 });
 
@@ -1108,29 +1112,9 @@ function showTab(name) {
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 showTab(location.hash.slice(1));
 
-/* ---------- 첫 화면: 예시 (가상의 펀드·금액) ---------- */
-function loadExample() {
-  state.example = true;
-  const mk = (id, name, value, date, check, manager) => ({ id, fileName: name + "_기준가격대장_260630.xlsx", name, fileTitle: name, manager, date, value, check, method: check.s === "ok" ? "신탁재산총자산 계정" : "순자산총액 + 부채합계", fields: { net: { v: value * 0.97 }, liab: { v: value * 0.03 }, nav: { v: 1012.34 } }, nameCands: [name], key: normName(name) });
-  state.ledgers = [
-    mk(0, "예시대체일반사모부동산투자신탁12호", 48210500000, "2026-06-30", { s: "ok", t: "순자산+부채 일치" }, "예시대체투자자산운용"),
-    mk(1, "EX글로벌인프라투자신탁3호(전문)", 21730880000, "2026-06-30", { s: "ok", t: "자산합계와 일치" }, "이그잼플자산운용"),
-    mk(2, "예시크레딧일반사모투자신탁7호", 9902000000, "2026-03-31", { s: "ok", t: "순자산+부채 일치" }, "예시자산운용"),
-  ];
-  state.target = null;
-  const row = (excelRow, name, cls, status, lid, score, why, notes, include) => ({ excelRow, name, cls, code: "", cands: lid != null ? [{ id: lid, score, why }] : [], ledgerId: lid, score, why, status, include, notes });
-  state.results = [
-    row(16, "예시대체전문투자형사모부동산투자신탁 12호", "기타수익증권", "auto", 0, 0.97, "이름 유사 · 호수 일치 · 운용사 일치", [], true),
-    row(17, "이그잼플전문투자형사모글로벌인프라신탁제3호", "기타수익증권", "auto", 1, 0.91, "이름 유사 · 호수 일치 · 운용사 일치", [], true),
-    row(18, "예시크레딧전문투자형사모투자신탁7호", "기타수익증권", "review", 2, 0.93, "이름 유사 · 호수 일치", ["기준일 2026-03-31 ≠ 2026-06-30"], false),
-    row(19, "예시법인용MMF 1(국공채)C", "MMF", "skip", null, 0, "", ["‘제외’ 표시 행"], false),
-    row(20, "예시벤처투자조합 2호", "PEF", "nomatch", null, 0, "", [], false),
-  ];
-  render();
-}
 updateMapCount();
 if (!window.XLSX || !window.JSZip) {
   $("#targetInfo").innerHTML = `<span class="err">엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결 또는 사내 차단 여부를 확인하거나 오프라인판을 쓰세요.</span>`;
 }
-loadExample();
+render();
 </script>
