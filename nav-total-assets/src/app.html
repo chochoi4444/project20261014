@@ -664,7 +664,8 @@ function extractMeta(rows, upto) {
       if (m) meta.unit = m[1];
     });
   }
-  if (!meta.date) for (let i = 0; i < lim; i++) for (const c of rows[i]) if (typeof c.v === "string") { const d = dateFromText(c.v); if (d) { meta.date = d; break; } }
+  // 날짜 표시가 따로 없으면 머리글에서 처음 나오는 날짜 (파이썬·매크로판과 같음)
+  if (!meta.date) outer: for (let i = 0; i < lim; i++) for (const c of rows[i]) if (typeof c.v === "string") { const d = dateFromText(c.v); if (d) { meta.date = d; break outer; } }
   return meta;
 }
 

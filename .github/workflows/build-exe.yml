@@ -7,6 +7,7 @@ on:
       - "nav-total-assets/python/**"
       - "nav-total-assets/src/app.html"
       - "nav-total-assets/tests/fixtures/**"
+      - "nav-total-assets/vba/**"
       - ".github/workflows/build-exe.yml"
   workflow_dispatch:
 
@@ -65,6 +66,8 @@ jobs:
           New-Item -ItemType Directory -Force pkg | Out-Null
           Copy-Item dist\TotalAssetsFiller.exe, dist\TotalAssetsFiller-cli.exe pkg\
           Copy-Item ..\dist\index.html pkg\TotalAssetsFiller-offline.html
+          Copy-Item ..\vba\TotalAssets.bas pkg\TotalAssets-macro.bas
+          Copy-Item ..\vba\README.md pkg\README-macro.md
           Copy-Item README_exe.txt pkg\README.txt
           Compress-Archive -Path pkg\* -DestinationPath TotalAssetsFiller-windows.zip -Force
           Get-ChildItem pkg, TotalAssetsFiller-windows.zip | Format-Table Name, Length
@@ -84,6 +87,7 @@ jobs:
           body: |
             Windows용 총자산 자동입력 프로그램입니다. `TotalAssetsFiller-windows.zip`을 내려받아 압축을 풀고 `TotalAssetsFiller.exe`를 더블클릭하세요. 사용법은 zip 안의 README.txt에 있습니다.
             `TotalAssetsFiller-offline.html`은 같은 기능의 웹 화면 한 파일입니다. 인터넷 없이 크롬·엣지로 열어 쓸 수 있습니다.
+            `TotalAssets-macro.bas`는 엑셀 매크로판입니다. 파일을 가져갈 수 없는 곳에서는 이 텍스트를 엑셀 VBA 모듈에 붙여 넣어 씁니다 (README-macro.md).
 
             - 커밋: ${{ github.sha }} (브랜치 `${{ github.ref_name }}`)
             - 빌드 중 확인: 매칭 테스트, 웹 버전과 점수 대조, 가상 장부로 exe 실행·결과 값 검증, 창 화면 실행

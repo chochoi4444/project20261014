@@ -22,6 +22,7 @@
 | 경로 | 내용 |
 | --- | --- |
 | `src/app.html` | 도구 본체 (claude.ai 아티팩트로 배포되는 페이지, 라이브러리는 cdnjs에서 로드) |
+| `vba/` | **엑셀 매크로판** — 텍스트로 옮겨 엑셀에 붙여 넣어 쓰는 판 ([vba/README.md](vba/README.md)) |
 | `python/` | **파이썬판·Windows exe** — 같은 규칙의 창 화면/명령줄 프로그램 ([python/README.md](python/README.md)) |
 | `tests/fixtures/matching-cases.json` | 웹·파이썬 테스트가 함께 쓰는 가상 펀드명 케이스 |
 | `build.mjs` | 라이브러리를 HTML 하나에 넣은 **오프라인판** 생성 |
