@@ -1060,11 +1060,22 @@ async function buildOutput() {
   return { blob, n };
 }
 
+// claude.ai 아티팩트 화면 안인지 (이 안에서는 일반 다운로드가 막혀 있다)
+const inArtifactViewer = !!(window.claude && window.claude.use);
+const SAVE_BLOCKED = "이 화면에서는 파일 저장이 허용되지 않았습니다. 공유 링크로 연 경우 오프라인 HTML 파일을 받아 쓰세요.";
+
 async function saveFile(filename, blob) {
   const d = await downloadsP;
   if (d) {
     try { await d.save({ filename, data: blob }); toast(`${filename} 저장을 요청했습니다`); return true; }
-    catch (e) { if (e && e.code === "declined") { toast("저장을 취소했습니다"); return false; } if (e && e.code === "rate_limited") { toast("저장 창이 이미 열려 있습니다. 잠시 후 다시 누르세요"); return false; } }
+    catch (e) {
+      if (e && e.code === "declined") { toast("저장을 취소했습니다"); return false; }
+      if (e && e.code === "rate_limited") { toast("저장 창이 이미 열려 있습니다. 잠시 후 다시 누르세요"); return false; }
+      if (inArtifactViewer) { toast(SAVE_BLOCKED); return false; }
+    }
+  } else if (inArtifactViewer) {
+    toast(SAVE_BLOCKED);
+    return false;
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = filename;
@@ -1079,8 +1090,7 @@ $("#btnSave").addEventListener("click", async () => {
   try {
     const { blob, n } = await buildOutput();
     const base = state.target.fileName.replace(/\.[^.]+$/, "");
-    await saveFile(`${base}_총자산입력.xlsx`, blob);
-    toast(`총자산 ${n}칸을 채운 파일을 만들었습니다`);
+    if (await saveFile(`${base}_총자산입력.xlsx`, blob)) toast(`총자산 ${n}칸을 채운 파일을 저장했습니다`);
   } catch (e) { toast("저장 실패: " + (e.message || e)); }
   busy(false);
 });
