@@ -14,8 +14,8 @@ def _fmt(n):
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        prog="python -m nav_total_assets",
-        description="기준가격대장(Excel·PDF)에서 총자산을 찾아 대상 엑셀의 총자산 칸에 입력합니다. 원본은 덮어쓰지 않습니다.",
+        prog=Path(sys.argv[0]).name if getattr(sys, "frozen", False) else "python -m nav_total_assets",
+        description="기준가격대장(엑셀)에서 총자산을 찾아 대상 엑셀의 총자산 칸에 입력합니다. 원본은 덮어쓰지 않습니다.",
     )
     p.add_argument("target", help="총자산을 채울 대상 엑셀 (.xlsx)")
     p.add_argument("ledgers", nargs="+", help="기준가격대장 파일 또는 폴더 (여러 개 가능)")

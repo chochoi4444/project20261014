@@ -6,6 +6,7 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
 FIXTURE = HERE.parent.parent / "tests" / "fixtures" / "matching-cases.json"
 
 

@@ -10,7 +10,7 @@ from .engine import match_names, match_status, norm_name, AUTO_SCORE
 from .ledger import Ledger, parse_ledger
 from .workbook import Target, has_number, is_text_mark, parse_target, write_values
 
-LEDGER_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".pdf", ".htm", ".html"}
+LEDGER_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".htm", ".html"}
 STATUS_KO = {"auto": "자동", "review": "검토", "manual": "수동", "nomatch": "미매칭", "skip": "제외"}
 
 

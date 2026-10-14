@@ -1,6 +1,6 @@
 """기준가격대장(신탁재산명세부) 읽기와 총자산 산출.
 
-모든 형식(xlsx · xls · csv · html로 된 xls · 텍스트 PDF)을 '행 = 셀 목록 [Cell(c, v, r)]'로 통일한 뒤
+모든 형식(xlsx · xls · csv · html로 된 xls)을 '행 = 셀 목록 [Cell(c, v)]'로 통일한 뒤
 같은 규칙으로 계정을 찾는다. 웹 버전과 같은 규칙이다.
 """
 from __future__ import annotations
@@ -18,9 +18,8 @@ from .engine import nfkc, norm_label, norm_name
 
 @dataclass
 class Cell:
-    c: float            # 열 위치 (엑셀: 열 번호, PDF: 글자 가운데 x좌표)
-    v: object           # 숫자(float) 또는 문자열
-    r: float | None = None  # PDF 전용: 글자 오른쪽 끝 x좌표
+    c: int      # 열 번호
+    v: object   # 숫자(float) 또는 문자열
 
 
 # ---------- 숫자·날짜 ----------
@@ -215,34 +214,6 @@ def sheets_from_html(path: Path):
     return [_rows_from_values(t) for t in p.tables if t]
 
 
-def rows_from_pdf(path: Path) -> list[list[Cell]]:
-    import pdfplumber
-    rows, text_len = [], 0
-    with pdfplumber.open(str(path)) as pdf:
-        for page in pdf.pages:
-            # 칸 안의 띄어쓰기는 한 덩어리로 두고(keep_blank_chars), 칸 사이의 넓은 간격에서만 나눈다
-            words = page.extract_words(keep_blank_chars=True, x_tolerance=1.5, y_tolerance=2.5, use_text_flow=False)
-            words = [w for w in words if w["text"].strip()]
-            text_len += sum(len(w["text"].strip()) for w in words)
-            lines: list[dict] = []
-            for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
-                ln = next((l for l in lines if abs(l["y"] - w["top"]) <= 2.5), None)
-                if ln:
-                    ln["items"].append(w)
-                else:
-                    lines.append({"y": w["top"], "items": [w]})
-            for ln in sorted(lines, key=lambda l: l["y"]):
-                row = []
-                for w in sorted(ln["items"], key=lambda w: w["x0"]):
-                    s = w["text"].strip()
-                    n = to_num(s)
-                    row.append(Cell((w["x0"] + w["x1"]) / 2, s if n is None else n, w["x1"]))
-                rows.append(row)
-    if text_len < 20:
-        raise ValueError("텍스트가 없는 PDF(스캔본)라 읽을 수 없습니다. 수기로 확인하세요.")
-    return rows
-
-
 # ---------- 계정 찾기 ----------
 FIELDS = {
     "total": ["신탁재산총자산", "신탁자산총자산", "신탁재산총자산(감사보수기준)", "신탁자산총자산(감사보수기준)", "총자산", "총자산액", "자산총액", "펀드총자산"],
@@ -272,9 +243,7 @@ def header_at(row: list[Cell]):
     dang = [c.c for c in texts if "당일" in norm_label(c.v) and "증감" not in norm_label(c.v)]
     if not dang:
         return None
-    # PDF 셀은 오른쪽 끝(r)을 가진다 → 머리글 시작 위치 = 2·중심 − 오른쪽 끝
-    starts = sorted(({"c": c.c, "start": 2 * c.c - c.r} for c in row if c.r is not None), key=lambda x: x["start"])
-    return {"cols": [c.c for c in row], "left": min(dang), "right": max(dang), "starts": starts}
+    return {"cols": [c.c for c in row], "left": min(dang), "right": max(dang)}
 
 
 def extract_from_rows(rows: list[list[Cell]]):
@@ -308,16 +277,10 @@ def extract_from_rows(rows: list[list[Cell]]):
                 if not _is_num(cell):
                     continue
                 if header:
-                    near = header["cols"][0]
-                    if cell.r is not None and header["starts"]:
-                        # PDF: 숫자는 오른쪽 정렬 — 숫자 오른쪽 끝보다 왼쪽에서 시작하는 마지막 머리글이 그 열
-                        hs = [x for x in header["starts"] if x["start"] <= cell.r + 2]
-                        near = hs[-1]["c"] if hs else header["starts"][0]["c"]
-                    else:
-                        d = float("inf")
-                        for hc in header["cols"]:
-                            if abs(hc - cell.c) < d:
-                                d, near = abs(hc - cell.c), hc
+                    near, d = header["cols"][0], float("inf")
+                    for hc in header["cols"]:
+                        if abs(hc - cell.c) < d:
+                            d, near = abs(hc - cell.c), hc
                     if near == header["left"] and left is None:
                         left = cell.v
                     elif near == header["right"] and right is None:
@@ -422,8 +385,6 @@ class Ledger:
 
 def _sheets(path: Path):
     ext = path.suffix.lower()
-    if ext == ".pdf":
-        return [rows_from_pdf(path)]
     head = path.read_bytes()[:512].lstrip()
     if head[:1] == b"<":
         return sheets_from_html(path)
