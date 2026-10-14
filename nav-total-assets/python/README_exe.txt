@@ -27,6 +27,10 @@
  매칭결과.csv 의 '매핑키(장부)' 열 값을 그대로 복사해 쓰면 됩니다.
  웹 도구에서 '매핑 내보내기'로 받은 파일도 그대로 쓸 수 있습니다.
 
+■ 웹 화면 한 파일 (TotalAssetsFiller-offline.html)
+ exe와 같은 기능을 브라우저로 쓰는 파일입니다. 인터넷 없이 크롬·엣지로 열면 됩니다.
+ 파일 하나라 메신저로 공유하기 쉽습니다. 장부 파일은 PC 밖으로 나가지 않습니다.
+
 ■ 명령창으로 일괄 처리 (TotalAssetsFiller-cli.exe)
    TotalAssetsFiller-cli.exe 대상.xlsx 장부폴더 --base-date 2026-09-30
    옵션: --include-review  --overwrite  --mapping 매핑.json  -o 결과.xlsx  --dry-run

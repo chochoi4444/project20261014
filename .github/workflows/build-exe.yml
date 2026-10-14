@@ -54,10 +54,17 @@ jobs:
           $p = Start-Process -FilePath .\dist\TotalAssetsFiller.exe -ArgumentList "--selftest-gui" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "gui exe failed: $($p.ExitCode)" }
 
+      - name: Build offline HTML (works without internet, shareable as one file)
+        working-directory: nav-total-assets
+        run: |
+          npm ci --omit=dev
+          npm run build
+
       - name: Package
         run: |
           New-Item -ItemType Directory -Force pkg | Out-Null
           Copy-Item dist\TotalAssetsFiller.exe, dist\TotalAssetsFiller-cli.exe pkg\
+          Copy-Item ..\dist\index.html pkg\TotalAssetsFiller-offline.html
           Copy-Item README_exe.txt pkg\README.txt
           Compress-Archive -Path pkg\* -DestinationPath TotalAssetsFiller-windows.zip -Force
           Get-ChildItem pkg, TotalAssetsFiller-windows.zip | Format-Table Name, Length
@@ -76,6 +83,7 @@ jobs:
           name: 총자산 자동입력 exe (빌드 ${{ github.run_number }})
           body: |
             Windows용 총자산 자동입력 프로그램입니다. `TotalAssetsFiller-windows.zip`을 내려받아 압축을 풀고 `TotalAssetsFiller.exe`를 더블클릭하세요. 사용법은 zip 안의 README.txt에 있습니다.
+            `TotalAssetsFiller-offline.html`은 같은 기능의 웹 화면 한 파일입니다. 인터넷 없이 크롬·엣지로 열어 쓸 수 있습니다.
 
             - 커밋: ${{ github.sha }} (브랜치 `${{ github.ref_name }}`)
             - 빌드 중 확인: 매칭 테스트, 웹 버전과 점수 대조, 가상 장부로 exe 실행·결과 값 검증, 창 화면 실행

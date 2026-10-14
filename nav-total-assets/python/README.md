@@ -62,6 +62,18 @@ python -m nav_total_assets 대상.xlsx 장부폴더 --base-date 2026-09-30   # �
 
 띄어쓰기·괄호 차이는 무시합니다. 매칭 결과 CSV의 ‘매핑키(장부)’ 열 값을 그대로 복사해 쓰면 됩니다.
 
+## 임베딩 모델 실험 (선택)
+
+강사 제안대로 ① 임베딩 모델로 펀드명을 벡터로 바꾸고 ② 코사인 유사도로 가까운 펀드를 찾는 방식을 시험하는 도구입니다. 모델은 로컬 폴더에서 읽으므로 사내 PC에서도 인터넷 없이 돕니다.
+
+```bash
+pip install onnxruntime tokenizers numpy
+python tools/fetch_model.py e5-small            # 인터넷 되는 PC에서 한 번: models/e5-small/ (약 118MB)
+python tools/embedding_eval.py --model models/e5-small --prefix "query: " --cases 실제케이스.json
+```
+
+지금 방식(글자 n-gram TF-IDF 코사인)과 ‘임베딩만’, ‘임베딩+호수 규칙’, ‘혼합’을 같은 케이스로 비교해 1순위 정답 수·점수 격차·번호만 다른 펀드 점수를 표로 보여 줍니다. 모델 후보는 `tools/fetch_model.py` 머리말에 있습니다.
+
 ## 테스트
 
 ```bash
@@ -72,6 +84,7 @@ python -m pytest
 - `test_matching.py` — 웹판과 같은 가상 펀드명 케이스(`../tests/fixtures/matching-cases.json` 공유)
 - `test_parity.py` — 웹판 매칭 엔진을 node로 실행해 **모든 점수·근거·배정·상태가 같은지** 대조 (node가 없으면 건너뜀)
 - `test_workbook.py` — 총자산 칸만 바꾸는 XML 저장 로직
+- `test_embedding.py` — 임베딩 기능 배관 점검(작은 가짜 모델, onnxruntime 없으면 건너뜀)
 - `test_synthetic.py` — `tests/make_fixture.py`가 만든 **가상 장부**로 읽기→매칭→저장까지 (실제 데이터 없이 CI에서도 실행)
 - 실제 파일로 확인(선택, 저장소 밖 파일):
   `MATCH_CASES=실제케이스.json TARGET=대상.xlsx LEDGERS=장부폴더 BASE_DATE=2026-09-30 python -m pytest -s`

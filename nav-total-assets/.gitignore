@@ -8,3 +8,4 @@ __pycache__/
 python/build/
 python/dist/
 python/*.spec
+python/models/
