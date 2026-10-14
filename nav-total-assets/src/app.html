@@ -165,7 +165,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
         <span class="what">총자산을 채울 대상 엑셀</span>
         <span class="hint">‘종목명’과 ‘총자산’ 열이 있는 시트를 자동으로 찾습니다</span>
         <span class="loaded" id="targetInfo"></span>
-        <input id="targetFile" type="file" accept=".xlsx,.xlsm">
+        <input id="targetFile" type="file" accept=".xlsx,.xlsm,.xls,.xlsb">
       </label>
       <label class="drop" id="dropLedgers">
         <span class="step">2단계</span>
@@ -648,8 +648,10 @@ async function parseLedger(file, id) {
   try {
     const buf = await file.arrayBuffer();
     let wb;
+    const kind = fileKind(buf);
+    if (kind === "unknown") throw new Error(MSG_DRM);
     try { wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false, cellStyles: false, cellHTML: false }); }
-    catch (e) { throw new Error("엑셀로 열 수 없습니다. 암호·DRM이 걸려 있는지 확인하세요."); }
+    catch (e) { throw new Error(readError(e, kind)); }
     const sheets = wb.SheetNames.map((n) => rowsFromSheet(wb.Sheets[n]));
     let best = null;
     for (const rows of sheets) {
@@ -698,9 +700,34 @@ function computeTotal(L) {
 }
 
 /* ---------- 대상 엑셀 ---------- */
+/* 파일 앞부분으로 형식을 본다: zip(xlsx) / ole(xls 또는 암호 걸린 xlsx) / 그 밖(문서보안 암호화 등) */
+function fileKind(buf) {
+  const b = new Uint8Array(buf.slice(0, 8));
+  if (b[0] === 0x50 && b[1] === 0x4b) return "zip";
+  if (b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0) return "ole";
+  const head = new TextDecoder("utf-8", { fatal: false }).decode(buf.slice(0, 512)).trim().toLowerCase();
+  if (head.startsWith("<")) return "html";
+  if (/^[\s\S]{0,512}$/.test(head) && /[,\t]/.test(head) && !/[\x00-\x08]/.test(head)) return "text";
+  return "unknown";
+}
+const MSG_DRM = "문서보안(DRM)으로 암호화된 파일로 보입니다. 브라우저는 DRM 파일을 읽을 수 없습니다. DRM이 해제된(반출 승인된) 사본을 올리거나, 엑셀 안에서 도는 매크로판(TotalAssets.bas)을 쓰세요.";
+const MSG_LOCKED = "암호 또는 문서보안(DRM)이 걸린 파일입니다. 엑셀에서 열어 암호를 해제해 저장한 사본을 올리거나, 엑셀 안에서 도는 매크로판(TotalAssets.bas)을 쓰세요.";
+function readError(e, kind) {
+  const m = String(e && e.message || e);
+  if (/password/i.test(m) || kind === "ole") return MSG_LOCKED;
+  return MSG_DRM;
+}
+
 async function parseTarget(file) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false });
+  const kind = fileKind(buf);
+  const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
+  if (ext === "xls" || ext === "xlsb") throw new Error(`.${ext} 형식은 대상 엑셀로 쓸 수 없습니다 (원본 서식을 지키며 저장하려면 .xlsx여야 합니다). 엑셀에서 ‘다른 이름으로 저장 → Excel 통합 문서(*.xlsx)’로 바꾼 뒤 올려 주세요.`);
+  if (kind === "ole") throw new Error(MSG_LOCKED);
+  if (kind !== "zip") throw new Error(MSG_DRM);
+  let wb;
+  try { wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false }); }
+  catch (e) { throw new Error(readError(e, kind)); }
   for (let si = 0; si < wb.SheetNames.length; si++) {
     const ws = wb.Sheets[wb.SheetNames[si]];
     if (!ws["!ref"]) continue;
@@ -732,7 +759,14 @@ async function parseTarget(file) {
       };
     }
   }
-  throw new Error("‘종목명’과 ‘총자산’ 머리글이 있는 시트를 찾지 못했습니다.");
+  // 무엇을 봤는지 알려 준다 (시트 이름과 각 시트 첫 줄)
+  const seen = wb.SheetNames.map((n) => {
+    const ws = wb.Sheets[n];
+    const aoa = ws["!ref"] ? XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: null, blankrows: false }) : [];
+    const first = (aoa.find((r) => r && r.some((v) => v != null && String(v).trim())) || []).filter((v) => v != null && String(v).trim()).slice(0, 6).map((v) => String(v).replace(/\s+/g, " ").slice(0, 14));
+    return `‘${n}’: ${first.length ? first.join(" | ") : "(빈 시트)"}`;
+  });
+  throw new Error(`‘종목명(또는 펀드명)’과 ‘총자산’ 머리글이 같은 줄에 있는 시트를 찾지 못했습니다 (각 시트 위쪽 15줄 확인). 읽은 시트: ${seen.join(" / ")}`);
 }
 
 /* ---------- 매핑 기억 (이 브라우저 전용) ---------- */
