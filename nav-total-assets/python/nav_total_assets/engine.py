@@ -56,7 +56,8 @@ def core_name(s) -> str:
 
 def nums(s) -> list[str]:
     found = re.findall(r"[0-9]+", nfkc(s))
-    return sorted({str(int(x)) for x in found if len(x) < 6})
+    # 5자리 이상은 펀드코드·날짜로 보고 호수 비교에서 뺀다
+    return sorted({str(int(x)) for x in found if len(x) < 5})
 
 
 # ---------- 유사도 ----------

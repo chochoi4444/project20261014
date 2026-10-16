@@ -326,7 +326,7 @@ NextB:
     CoreName = out
 End Function
 
-' 이름 속 숫자(호수·종류)를 정렬해 "1|89" 같은 키로 만든다 (6자리 이상은 날짜·코드로 보고 뺀다)
+' 이름 속 숫자(호수·종류)를 정렬해 "1|89" 같은 키로 만든다 (5자리 이상은 펀드코드·날짜로 보고 뺀다)
 Public Function NumsKey(ByVal s As String) As String
     Dim t As String, i As Long, ch As String, run As String, parts() As String, n As Long, k As Long, j As Long, tmp As String, dup As Boolean
     t = NormText(s) & " "
@@ -337,7 +337,7 @@ Public Function NumsKey(ByVal s As String) As String
         If IsDigitCh(ch) Then
             run = run & ch
         ElseIf Len(run) > 0 Then
-            If Len(run) < 6 Then
+            If Len(run) < 5 Then
                 Do While Len(run) > 1 And Left$(run, 1) = "0"
                     run = Mid$(run, 2)
                 Loop
@@ -882,6 +882,7 @@ Public Function CleanFileName(ByVal fileName As String) As String
     t = NormText(fileName)
     p = InStrRev(t, ".")
     If p > 0 And p < Len(t) Then t = Left$(t, p - 1)
+    t = CompactDates(t)
     ' 날짜 뒤의 '_1', '(1)' 같은 사본 표시
     q = Len(t)
     Do While q > 0
@@ -981,6 +982,61 @@ Public Function CleanFileName(ByVal fileName As String) As String
         t = Replace(t, "  ", " ")
     Loop
     CleanFileName = TrimWS(t)
+End Function
+
+Private Function IsDateSep(ByVal ch As String, ByVal withUnderscore As Boolean) As Boolean
+    IsDateSep = (ch = "." Or ch = "-" Or (withUnderscore And (ch = "_" Or ch = "/")))
+End Function
+
+' '2026.09.30', '2026-9-30', '2026_09_30' → '20260930', '26.09.30' → '260930' (뒤에서 날짜 숫자로 함께 지운다)
+Private Function CompactDates(ByVal t As String) As String
+    Dim i As Long, out As String, q As Long, q2 As Long, ml As Long, dl As Long, prevDigit As Boolean, done As Boolean
+    i = 1
+    Do While i <= Len(t)
+        done = False
+        prevDigit = False
+        If i > 1 Then prevDigit = IsDigitCh(Mid$(t, i - 1, 1))
+        If Not prevDigit And Mid$(t, i, 2) = "20" And DigitRunLen(t, i, 4) = 4 Then
+            q = SkipWS(t, i + 4)
+            If q <= Len(t) Then
+                If IsDateSep(Mid$(t, q, 1), True) Then
+                    q = SkipWS(t, q + 1)
+                    ml = DigitRunLen(t, q, 3)
+                    If ml >= 1 And ml <= 2 Then
+                        q2 = SkipWS(t, q + ml)
+                        If q2 <= Len(t) Then
+                            If IsDateSep(Mid$(t, q2, 1), True) Then
+                                q2 = SkipWS(t, q2 + 1)
+                                dl = DigitRunLen(t, q2, 3)
+                                If dl >= 1 And dl <= 2 Then
+                                    out = out & Mid$(t, i, 4) & Right$("0" & Mid$(t, q, ml), 2) & Right$("0" & Mid$(t, q2, dl), 2)
+                                    i = q2 + dl
+                                    done = True
+                                End If
+                            End If
+                        End If
+                    End If
+                End If
+            End If
+        End If
+        If Not done And Not prevDigit And i + 7 <= Len(t) Then
+            ' 26.09.30 / 26-09-30 (각 두 자리, 구분은 '.' 또는 '-')
+            If DigitRunLen(t, i, 3) = 2 Then
+                If IsDateSep(Mid$(t, i + 2, 1), False) And DigitRunLen(t, i + 3, 3) = 2 Then
+                    If IsDateSep(Mid$(t, i + 5, 1), False) And DigitRunLen(t, i + 6, 3) = 2 Then
+                        out = out & Mid$(t, i, 2) & Mid$(t, i + 3, 2) & Mid$(t, i + 6, 2)
+                        i = i + 8
+                        done = True
+                    End If
+                End If
+            End If
+        End If
+        If Not done Then
+            out = out & Mid$(t, i, 1)
+            i = i + 1
+        End If
+    Loop
+    CompactDates = out
 End Function
 
 Private Function RemoveQuarter(ByVal t As String) As String

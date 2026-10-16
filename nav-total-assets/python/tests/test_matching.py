@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from nav_total_assets.engine import Idf, cosine_sim, match_names, match_status, norm_name, REVIEW_SCORE
+from nav_total_assets.engine import Idf, cosine_sim, match_names, match_status, norm_name, nums, REVIEW_SCORE
 from nav_total_assets.pipeline import load_mapping
 
 KO = {"auto": "자동", "review": "검토", "nomatch": "미매칭"}
@@ -49,6 +49,15 @@ def test_all_ledgers_one_to_one(cases):
         assert assign.get(v["target"]) == i
     used = [x for x in assign.values() if x is not None]
     assert len(used) == len(set(used))
+
+
+def test_filename_cleanup_matches_fixture():
+    from nav_total_assets.ledger import clean_file_name
+    data = json.loads((Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "filename-cases.json").read_text(encoding="utf-8"))
+    for c in data["cases"]:
+        title = clean_file_name(c["file"])
+        assert title == c["title"], c["file"]
+        assert nums(title) == c["nums"], c["file"]
 
 
 def test_cosine_properties():

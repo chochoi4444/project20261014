@@ -203,3 +203,20 @@ Function Dbg4() As String
 Fail:
     Dbg4 = Dbg4 & " ERROR at " & st & ": " & Err & " " & Error$ & " @" & Erl
 End Function
+
+
+' 파일명 목록 → 정리된 이름과 호수 키 (줄마다 "이름<TAB>숫자키")
+Function CleanNames(ByVal inText As String) As String
+    Dim ln As Variant, t As String, txt As String
+    On Error GoTo Fail
+    For Each ln In Split(inText, Chr(10))
+        If ln <> "" Then
+            t = CleanFileName(ln)
+            txt = txt & t & Chr(9) & NumsKey(t) & Chr(10)
+        End If
+    Next
+    CleanNames = txt
+    Exit Function
+Fail:
+    CleanNames = "ERROR " & Err & " " & Error$ & " @" & Erl
+End Function

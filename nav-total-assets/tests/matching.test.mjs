@@ -13,8 +13,9 @@ const html = readFileSync(join(here, "..", "src", "app.html"), "utf8");
 const START = "/* ==== 매칭 엔진 시작", END = "/* ==== 매칭 엔진 끝 ==== */";
 assert.ok(html.includes(START) && html.includes(END), "app.html에서 매칭 엔진 구역 표시를 찾지 못했습니다");
 const code = html.slice(html.indexOf(START), html.indexOf(END));
+const cleanFn = html.slice(html.indexOf("function cleanFileName"), html.indexOf("/* ---------- 장부 읽기"));
 const ctx = vm.createContext({});
-vm.runInContext(code + "\n;globalThis.E = { scoreName, matchNames, matchStatus, normName, coreName, nums, cosineSim, buildIdf, AUTO_SCORE, REVIEW_SCORE };", ctx);
+vm.runInContext(code + "\n" + cleanFn + "\n;globalThis.E = { cleanFileName, scoreName, matchNames, matchStatus, normName, coreName, nums, cosineSim, buildIdf, AUTO_SCORE, REVIEW_SCORE };", ctx);
 const E = ctx.E;
 const STATUS_KO = { auto: "자동", review: "검토", nomatch: "미매칭" };
 
@@ -75,6 +76,29 @@ test("코사인 유사도: 같은 이름 1, 겹치는 글자 없으면 0, 흔한
   const idf = E.buildIdf(["가온부동산", "누리부동산", "다온부동산", "가온인프라"]);
   const ratio = (a, b) => E.cosineSim(a, b, idf) / E.cosineSim(a, b);
   assert.ok(ratio("가온부동산", "누리부동산") < ratio("가온부동산", "가온인프라"));
+});
+
+test("파일명의 날짜·펀드코드·사본 표시를 지우고 호수만 남긴다", async (t) => {
+  const { cases } = JSON.parse(readFileSync(join(here, "fixtures", "filename-cases.json"), "utf8"));
+  for (const c of cases) {
+    await t.test(c.file, () => {
+      const title = E.cleanFileName(c.file);
+      assert.equal(title, c.title);
+      assert.deepEqual([...E.nums(title)], c.nums);
+    });
+  }
+});
+
+test("파일명에 날짜·펀드코드가 있어도 맞는 종목에 붙는다", () => {
+  const L = (name) => ({ id: 0, nameCands: [E.cleanFileName(name)], name: null, fileTitle: E.cleanFileName(name), manager: "" });
+  for (const [file, target] of [
+    ["기준가격대장_2026.09.30_보람북미크레딧일반사모특별자산투자신탁8호.xls", TARGETS[14]],
+    ["2026-09-30 가온대체투자일반사모부동산투자신탁101호.xlsx", TARGETS[0]],
+    ["18021_가온대체투자일반사모부동산투자신탁101호.xls", TARGETS[0]],
+  ]) {
+    const { assign } = E.matchNames(TARGETS, [L(file)]);
+    assert.equal(assign.get(target), 0, `${file} → 배정 안 됨`);
+  }
 });
 
 test("저장된 수동 매핑이 점수보다 우선한다", () => {

@@ -111,6 +111,20 @@ def parity():
     return bad == 0
 
 
+def filenames():
+    data = json.loads((ROOT / "tests/fixtures/filename-cases.json").read_text(encoding="utf-8"))
+    txt = run_macro("CleanNames", "".join(c["file"] + "\n" for c in data["cases"]))
+    rows = txt.split("\n")
+    bad = 0
+    for c, row in zip(data["cases"], rows):
+        title, key = (row.split("\t") + [""])[:2]
+        if title != c["title"] or key != "|".join(c["nums"]):
+            bad += 1
+            print(f"  다름: {c['file']}: 매크로 '{title}' [{key}] vs 기대 '{c['title']}' {c['nums']}")
+    print(f"파일명 정리 대조: {len(data['cases'])}건, 다른 곳 {bad}")
+    return bad == 0
+
+
 def full(target, ledgers, base):
     txt = run_macro("Full", str(target), str(ledgers), base or "")
     _, lds, results, base_used = run(target, [ledgers], base or None)
@@ -143,6 +157,7 @@ def full(target, ledgers, base):
 if __name__ == "__main__":
     install_modules()
     ok = parity()
+    ok &= filenames()
     from make_fixture import make
     fx = make(Path(tempfile.mkdtemp()) / "fx")
     ok &= full(fx / "대상.xlsx", fx / "장부", None)
