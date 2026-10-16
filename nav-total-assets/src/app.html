@@ -206,6 +206,8 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
 
     <details class="sheet ledgers" id="ledgerPanel">
       <summary>장부별 추출값 <span id="ledgerCount" style="font-weight:400;color:var(--ink-2)"></span></summary>
+      <div id="unmatchedBar" hidden style="padding:8px 14px"><button type="button" class="btn" id="btnUnmatched">매칭 안 됨 진단 복사</button> <span style="font-size:12.5px;color:var(--ink-2)">파일명·인식한 이름·후보·원인만 담고 금액은 넣지 않습니다</span>
+        <textarea id="unmatchedText" readonly hidden rows="10" style="width:100%;margin-top:8px;font:12px/1.5 ui-monospace,monospace"></textarea></div>
       <div class="scroll">
         <table>
           <thead><tr>
@@ -849,22 +851,51 @@ function scoreCell(s) {
 }
 
 /* 매칭 안 된 장부: 가장 가까운 종목과 이유를 보여 주고, 직접 고를 수 있게 한다 */
-function unmatchedCell(l) {
-  if (!state.target || !state.scores) return `<span class="pill mute">매칭 안 됨</span>`;
+/* 매칭 안 된 장부: 대상 종목별 점수(높은 순)와 추정 원인 */
+function ledgerCands(l) {
   const taken = new Set(state.results.filter((r) => r.ledgerId != null).map((r) => r.name));
   const cands = [];
   for (const [name, list] of state.scores) {
     const e = list.find((x) => x.id === l.id);
     if (e) cands.push({ name, score: e.score, why: e.why, taken: taken.has(name) });
   }
-  cands.sort((a, b) => b.score - a.score);
-  const top = cands.slice(0, 8);
+  return cands.sort((a, b) => b.score - a.score);
+}
+function unmatchedCause(l, best) {
+  if (!best) return "대상 엑셀에 종목이 없음";
+  const shortName = !l.name && coreName(l.fileTitle).length < 4;
+  if (best.score >= 0.55 && best.taken) return "가장 가까운 종목에 다른 장부가 이미 연결됨 (같은 펀드 장부 중복, 또는 다른 장부가 잘못 연결)";
+  if (/호수/.test(best.why || "")) return `호수·종류가 다름 (장부 ${nums(l.name || l.fileTitle).join(",") || "없음"} / 종목 ${nums(best.name).join(",") || "없음"})`;
+  if (shortName) return "장부 본문에 펀드명이 없고, 파일명에서 얻은 이름이 너무 짧음";
+  if (!l.name) return `장부 본문에서 펀드명을 못 읽어 파일명(‘${l.fileTitle}’)으로만 비교함 — 파일명에 운용사·호수가 없으면 찾기 어려움`;
+  if (best.score < 0.3) return "대상 엑셀에 이 펀드가 없거나 이름이 완전히 다름";
+  return "이름이 비슷하지만 후보 기준(0.55)에 못 미침";
+}
+function unmatchedCell(l) {
+  if (!state.target || !state.scores) return `<span class="pill mute">매칭 안 됨</span>`;
+  const top = ledgerCands(l).slice(0, 8);
   const best = top[0];
   const opts = [`<option value="">— 연결할 종목 고르기 —</option>`].concat(top.map((c) =>
     `<option value="${esc(c.name)}">${c.score.toFixed(2)} · ${esc(c.name)}${c.taken ? " (다른 장부 연결됨)" : ""}</option>`)).join("");
-  return `<span class="pill mute">매칭 안 됨</span>` +
-    (best ? `<span class="why">가장 가까운 종목 ${best.score.toFixed(2)}: ${esc(best.name)}<br>${esc(best.why || "")}${best.taken ? " · 그 종목엔 다른 장부가 이미 연결됨" : ""}</span>` : "") +
+  return `<span class="pill mute">매칭 안 됨</span><span class="why"><b>원인 추정:</b> ${esc(unmatchedCause(l, best))}</span>` +
+    (best ? `<span class="why">가장 가까운 종목 ${best.score.toFixed(2)}: ${esc(best.name)}<br>${esc(best.why || "")}</span>` : "") +
     `<select class="assign" data-lid="${l.id}" aria-label="${esc(l.fileName)} 연결할 종목" style="margin-top:4px;max-width:20em">${opts}</select>`;
+}
+/* 매칭 안 된 장부 진단을 글로 (금액은 넣지 않는다) */
+function unmatchedReport() {
+  const used = new Set(state.results.map((r) => r.ledgerId).filter((x) => x != null));
+  const L = state.ledgers.filter((l) => !l.error && l.value != null && !used.has(l.id));
+  const out = [`매칭 안 됨 ${L.length}건`];
+  L.forEach((l, k) => {
+    const c = ledgerCands(l);
+    out.push("", `${k + 1}. ${l.fileName}`,
+      `   본문 펀드명: ${l.name || "(없음)"}`,
+      `   파일명 정리: ${l.fileTitle}`,
+      `   비교한 핵심이름: ${coreName(l.name || l.fileTitle)}  호수: ${nums(l.name || l.fileTitle).join(",") || "없음"}`,
+      `   원인 추정: ${unmatchedCause(l, c[0])}`);
+    c.slice(0, 3).forEach((x, n) => out.push(`   후보${n + 1} ${x.score.toFixed(2)} ${x.name} [핵심 ${coreName(x.name)}] ${x.why || ""}${x.taken ? " · 다른 장부 연결됨" : ""}`));
+  });
+  return out.join("\n");
 }
 
 function render() {
@@ -934,6 +965,7 @@ function render() {
       <td class="num">${used.has(l.id) ? used.get(l.id).join(", ") : l.error ? `<span class="pill bad">읽기 실패</span>` : l.value == null ? `<span class="pill warn">총자산 없음</span>` : unmatchedCell(l)}</td>
     </tr>`).join("") : `<tr><td colspan="9" class="empty">장부를 올리면 파일마다 읽은 값이 여기에 나옵니다.</td></tr>`;
 
+  $("#unmatchedBar").hidden = !(state.target && state.ledgers.some((l) => !l.error && l.value != null && !used.has(l.id)));
   const ready = !!state.target && !state.example;
   $("#btnSave").disabled = !(ready && inc > 0);
 
@@ -991,6 +1023,14 @@ $("#ledgerBody").addEventListener("change", (e) => {
   toast(`${l.name || l.fileTitle} → ${e.target.value} 에 연결했습니다`);
 });
 document.addEventListener("click", (e) => {
+  if (e.target.id === "btnUnmatched") {
+    const ta = $("#unmatchedText");
+    ta.value = unmatchedReport(); ta.hidden = false; ta.focus(); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch {}
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(() => toast("진단 내용을 복사했습니다"), () => { if (!ok) toast("아래 글을 선택해 복사하세요"); });
+    else toast(ok ? "진단 내용을 복사했습니다" : "아래 글을 선택해 복사하세요");
+  }
   if (e.target.id === "btnFixDate") { $("#baseDate").value = e.target.dataset.date; runMatching(); toast(`기준일을 ${e.target.dataset.date}로 바꿨습니다`); }
   if (e.target.id === "btnCheckReview") {
     let n = 0;
