@@ -51,7 +51,8 @@ Private Const LD_PATH As Long = 15
 Private Const LD_CANDS As Long = 16
 Private Const LD_NCANDS As Long = 17
 Private Const LD_SHEET As Long = 18
-Private Const LD_SIZE As Long = 19
+Private Const LD_SUPER As Long = 19   ' 같은 이름의 결산후 파일이 있어 뺀 결산전 장부
+Private Const LD_SIZE As Long = 20
 
 ' ---------- 매칭 결과 (MatchNames가 채움) ----------
 Public mScores() As Double
@@ -706,10 +707,12 @@ Public Sub MatchNames(names() As String, ByVal nT As Long, lds() As Variant, ByV
         ReDim Preserve corpus(nc): corpus(nc) = CoreName(names(t)): nc = nc + 1
     Next
     For l = 0 To nL - 1
-        cands = lds(l)(LD_CANDS)
-        For k = 0 To lds(l)(LD_NCANDS) - 1
-            If cands(k) <> "" Then ReDim Preserve corpus(nc): corpus(nc) = CoreName(cands(k)): nc = nc + 1
-        Next
+        If IsUsable(lds(l)) Then
+            cands = lds(l)(LD_CANDS)
+            For k = 0 To lds(l)(LD_NCANDS) - 1
+                If cands(k) <> "" Then ReDim Preserve corpus(nc): corpus(nc) = CoreName(cands(k)): nc = nc + 1
+            Next
+        End If
     Next
     BuildIdf corpus, nc
     ReDim mScores(IIf(nT > 0, nT - 1, 0), IIf(nL > 0, nL - 1, 0))
@@ -717,7 +720,12 @@ Public Sub MatchNames(names() As String, ByVal nT As Long, lds() As Variant, ByV
     ReDim mAssign(IIf(nT > 0, nT - 1, 0))
     For t = 0 To nT - 1
         For l = 0 To nL - 1
-            mScores(t, l) = ScoreName(names(t), lds(l)(LD_CANDS), lds(l)(LD_NCANDS), lds(l)(LD_MANAGER), why)
+            ' 읽기 실패·결산전(결산후 있음) 장부는 후보가 아니다
+            If IsUsable(lds(l)) Then
+                mScores(t, l) = ScoreName(names(t), lds(l)(LD_CANDS), lds(l)(LD_NCANDS), lds(l)(LD_MANAGER), why)
+            Else
+                mScores(t, l) = 0: why = ""
+            End If
             mWhys(t, l) = why
         Next
     Next
@@ -728,6 +736,7 @@ Public Sub MatchNames(names() As String, ByVal nT As Long, lds() As Variant, ByV
         If src = "" Then src = lds(l)(LD_TITLE)
         If src = "" And lds(l)(LD_NCANDS) > 0 Then src = lds(l)(LD_CANDS)(0)
         cn = NumsKey(src)
+        If Not IsUsable(lds(l)) Then cn = ""
         If HasLongNum(cn) Then
             hits = 0
             For t = 0 To nT - 1
@@ -1070,7 +1079,10 @@ Public Function CleanFileName(ByVal fileName As String) As String
     t = DropFundCodes(out)
     ' '2026년 2분기', '2Q' 같은 분기·연도 표기
     t = RemoveQuarter(t)
-    For Each w In Array("기준가격대장", "기준가대장", "신탁재산명세부", "통합명세부", "재산명세부", "명세부", "총계정원장", "계정원장", "원장", "마감자료", "조회", "사본", "복사본")
+    For Each w In Array("(결산전)", "(결산 전)", "(결산후)", "(결산 후)", "(결산반영)", "[결산전]", "[결산 전]", "[결산후]", "[결산 후]", "[결산반영]")
+        t = Replace(t, CStr(w), " ")
+    Next
+    For Each w In Array("기준가격대장", "기준가대장", "신탁재산명세부", "통합명세부", "재산명세부", "명세부", "총계정원장", "계정원장", "원장", "마감자료", "조회", "사본", "복사본", "결산전", "결산 전", "결산후", "결산 후", "결산반영")
         t = Replace(t, CStr(w), " ")
     Next
     t = Replace(t, "_", " ")
@@ -1751,7 +1763,7 @@ Private Function MakeLedger(ByVal path As String, ByVal fileName As String, ByVa
     For f = 0 To 5
         bfv(f) = fvIn(f): bfpri(f) = priIn(f): bflabel(f) = labIn(f)
     Next
-    ld(LD_FILE) = fileName: ld(LD_PATH) = path: ld(LD_ERROR) = errMsg: ld(LD_SHEET) = sheetName
+    ld(LD_FILE) = fileName: ld(LD_PATH) = path: ld(LD_ERROR) = errMsg: ld(LD_SHEET) = sheetName: ld(LD_SUPER) = False
     ld(LD_NAME) = "": ld(LD_MANAGER) = "": ld(LD_CODE) = "": ld(LD_DATE) = "": ld(LD_METHOD) = ""
     ld(LD_VALUE) = Empty: ld(LD_NET) = Empty: ld(LD_LIAB) = Empty: ld(LD_NAV) = Empty
     Select Case bmeta(4)
@@ -1993,11 +2005,69 @@ Private Function ResolveForced(v As Variant, lds() As Variant, ByVal nL As Long)
     If key = "__none__" Then ResolveForced = -1: Exit Function
     ResolveForced = -2
     For l = 0 To nL - 1
-        If lds(l)(LD_ERROR) = "" Then
+        If IsUsable(lds(l)) Then
             If key = lds(l)(LD_KEY) Or key = NormName(lds(l)(LD_TITLE)) Or key = NormName(FileStem(lds(l)(LD_FILE))) Then ResolveForced = l: Exit Function
         End If
     Next
 End Function
+
+Private Function IsUsable(ld As Variant) As Boolean
+    IsUsable = False
+    If ld(LD_ERROR) <> "" Then Exit Function
+    If UBound(ld) >= LD_SUPER Then
+        If Not IsEmpty(ld(LD_SUPER)) Then
+            If CBool(ld(LD_SUPER)) Then Exit Function
+        End If
+    End If
+    IsUsable = True
+End Function
+
+' 파일명의 결산 표시: "post"(결산후·결산반영) / "pre"(결산전) / ""
+Public Function SettleTag(ByVal fileName As String) As String
+    Dim t As String
+    t = NormText(fileName)
+    If InStr(t, "결산후") > 0 Or InStr(t, "결산 후") > 0 Or InStr(t, "결산반영") > 0 Then
+        SettleTag = "post"
+    ElseIf InStr(t, "결산전") > 0 Or InStr(t, "결산 전") > 0 Then
+        SettleTag = "pre"
+    Else
+        SettleTag = ""
+    End If
+End Function
+
+' 결산 표시를 뺀 파일명(확장자 제외) — 결산전/결산후 짝을 찾는 열쇠
+Public Function SettleKey(ByVal fileName As String) As String
+    Dim t As String, p As Long, w As Variant
+    t = NormText(fileName)
+    p = InStrRev(t, ".")
+    If p > 0 And p < Len(t) Then t = Left$(t, p - 1)
+    For Each w In Array("결산전", "결산 전", "결산후", "결산 후", "결산반영")
+        t = Replace(t, CStr(w), "")
+    Next
+    SettleKey = NormName(t)
+End Function
+
+' 이름이 같은 결산전·결산후 파일이 모두 있으면 결산전 장부를 빼도록 표시 (시트 장부는 시트까지 같아야 짝)
+Public Sub MarkSettlement(lds() As Variant, ByVal nL As Long)
+    Dim l As Long, m As Long, key As String, ld As Variant, hit As Boolean
+    For l = 0 To nL - 1
+        ld = lds(l)
+        ld(LD_SUPER) = False
+        If SettleTag(ld(LD_FILE)) = "pre" Then
+            key = SettleKey(ld(LD_FILE)) & "|" & ld(LD_SHEET)
+            hit = False
+            For m = 0 To nL - 1
+                If lds(m)(LD_ERROR) = "" Then
+                    If SettleTag(lds(m)(LD_FILE)) = "post" Then
+                        If SettleKey(lds(m)(LD_FILE)) & "|" & lds(m)(LD_SHEET) = key Then hit = True: Exit For
+                    End If
+                End If
+            Next
+            ld(LD_SUPER) = hit
+        End If
+        lds(l) = ld
+    Next
+End Sub
 
 Private Function LedgerFileLabel(ld As Variant) As String
     If ld(LD_SHEET) <> "" Then
@@ -2128,6 +2198,7 @@ Public Sub RunTotalAssets()
             nL = nL + 1
         Next
     Next
+    MarkSettlement lds, nL
     Application.AutomationSecurity = prevSec
     Application.StatusBar = False
 
@@ -2431,6 +2502,8 @@ Private Sub WriteReport(ByVal path As String, lds() As Variant, ByVal nL As Long
         data(l + 1, 8) = ld(LD_METHOD)
         If ld(LD_ERROR) <> "" Then
             data(l + 1, 9) = ld(LD_ERROR)
+        ElseIf Not IsUsable(ld) Then
+            data(l + 1, 9) = "같은 이름의 결산후 파일이 있어 제외"
         Else
             data(l + 1, 9) = ld(LD_CHECKT)
         End If

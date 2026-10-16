@@ -264,6 +264,9 @@ class App:
         self.summary_var.set(" · ".join(f"{STATUS_KO[k]} {cnt[k]}" for k in STATUS_ORDER) + f"   |   입력 {inc}행   |   기준일 {base or '-'}")
         lines = [f"장부 {len(ledgers)}개를 읽었습니다." + (f" (읽기 실패 {len(bad)}개)" if bad else "")]
         lines += [f"  · {l.file_name}: {l.error}" for l in bad[:5]]
+        pre = [l for l in ledgers if l.superseded]
+        if pre:
+            lines.append(f"결산후 파일이 있어 결산전 {len(pre)}개는 쓰지 않았습니다.")
         if out:
             lines.append(f"\n총자산 {inc}칸을 채운 파일:\n{out}")
             self.status_var.set(f"저장했습니다: {out.name}")

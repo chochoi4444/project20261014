@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .engine import match_names, match_status, norm_name, AUTO_SCORE
-from .ledger import Ledger, parse_ledgers
+from .ledger import Ledger, mark_settlement, parse_ledgers
 from .workbook import Target, has_number, is_text_mark, parse_target, write_values
 
 LEDGER_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".htm", ".html"}
@@ -65,7 +65,8 @@ def run(target_path, ledger_paths, base_date: str | None = None, overwrite: bool
         if progress:
             progress(i + 1, len(files), f)
         ledgers += parse_ledgers(f, len(ledgers))
-    ok = [l for l in ledgers if not l.error]
+    mark_settlement(ledgers)
+    ok = [l for l in ledgers if not l.error and not l.superseded]
     base = base_date or target.base_date
     mapping = mapping or {}
 

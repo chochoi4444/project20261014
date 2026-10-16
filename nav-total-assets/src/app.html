@@ -575,8 +575,25 @@ function cleanFileName(name) {
   // 날짜(6·8자리)와 펀드코드(5자리 이상 숫자)는 펀드명이 아니므로 지운다
   t = t.replace(/20\d{6}|(?<!\d)\d{6}(?!\d)/g, " ").replace(/(?<![\dA-Za-z])\d{5,}(?![\dA-Za-z])/g, " ");
   t = t.replace(/(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)/gi, " ").replace(/20\d{2}\s*년/g, " ");
-  t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본/g, " ");
+  t = t.replace(/\((결산 ?전|결산 ?후|결산반영)\)|\[(결산 ?전|결산 ?후|결산반영)\]/g, " ");
+  t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본|결산 ?전|결산 ?후|결산반영/g, " ");
   return t.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+/* 파일명의 결산 표시: "post"(결산후·결산반영) / "pre"(결산전) / "" */
+function settleTag(fileName) {
+  const t = nfkc(fileName);
+  if (/결산 ?후|결산반영/.test(t)) return "post";
+  if (/결산 ?전/.test(t)) return "pre";
+  return "";
+}
+/* 결산 표시를 뺀 파일명(확장자 제외) — 결산전/결산후 짝을 찾는 열쇠 */
+function settleKey(fileName) {
+  return normName(nfkc(fileName).replace(/\.[^.]+$/, "").replace(/결산 ?전|결산 ?후|결산반영/g, ""));
+}
+/* 이름이 같은 결산전·결산후 파일이 모두 있으면 결산전 장부를 빼도록 표시한다 (시트 장부는 시트까지 같아야 짝) */
+function markSettlement(ledgers) {
+  const post = new Set(ledgers.filter((l) => !l.error && settleTag(l.fileName) === "post").map((l) => settleKey(l.fileName) + "|" + (l.sheet || "")));
+  for (const l of ledgers) l.superseded = settleTag(l.fileName) === "pre" && post.has(settleKey(l.fileName) + "|" + (l.sheet || ""));
 }
 
 /* ---------- 장부 읽기: 모든 형식을 '행 = 셀 목록 {c, v}'로 통일 ---------- */
@@ -854,8 +871,9 @@ function updateMapCount() { $("#mapCount").textContent = Object.keys(mapping).le
 /* ---------- 매칭 ---------- */
 const state = { target: null, ledgers: [], results: [], filter: "all", example: false, uploaded: 0, skipped: [], dups: 0 };
 
+const usable = (l) => !l.error && !l.superseded;
 function runMatching() {
-  const T = state.target, Ls = state.ledgers.filter((l) => !l.error);
+  const T = state.target, Ls = state.ledgers.filter(usable);
   if (!T) return;
   const overwrite = $("#overwrite").checked;
   const base = $("#baseDate").value || T.baseDate;
@@ -948,7 +966,7 @@ function unmatchedCell(l) {
 /* 매칭 안 된 장부 진단을 글로 (금액은 넣지 않는다) */
 function unmatchedReport() {
   const used = new Set(state.results.map((r) => r.ledgerId).filter((x) => x != null));
-  const L = state.ledgers.filter((l) => !l.error && l.value != null && !used.has(l.id));
+  const L = state.ledgers.filter((l) => usable(l) && l.value != null && !used.has(l.id));
   const out = [`매칭 안 됨 ${L.length}건`];
   L.forEach((l, k) => {
     const c = ledgerCands(l);
@@ -1013,8 +1031,8 @@ function render() {
   R.forEach((r) => { if (r.ledgerId != null) used.set(r.ledgerId, (used.get(r.ledgerId) || []).concat(r.excelRow)); });
   {
     const t = ledgerTally();
-    const found = state.ledgers.filter((l) => !l.error && l.value != null).length;
-    const noTotal = state.ledgers.filter((l) => !l.error && l.value == null).length;
+    const found = state.ledgers.filter((l) => usable(l) && l.value != null).length;
+    const noTotal = state.ledgers.filter((l) => usable(l) && l.value == null).length;
     const matched = state.ledgers.filter((l) => used.has(l.id)).length;
     const bits = [`총자산 찾음 ${found}`];
     if (noTotal) bits.push(`총자산 못 찾음 ${noTotal}`);
@@ -1023,7 +1041,7 @@ function render() {
     if (state.target) bits.push(`대상 엑셀에 매칭됨 ${matched} · 매칭 안 됨 ${state.ledgers.length - matched}`);
     $("#ledgerCount").textContent = t.uploaded ? `· 올린 파일 ${t.uploaded}개 — ${bits.join(" · ")}${t.dups ? ` · 같은 파일 중복 ${t.dups}` : ""}` : "";
   }
-  const order = (l) => (l.error ? 0 : l.value == null ? 1 : used.has(l.id) ? 3 : 2);
+  const order = (l) => (l.error ? 0 : l.superseded ? 4 : l.value == null ? 1 : used.has(l.id) ? 3 : 2);
   const skippedRows = state.skipped.map((k) => `<tr><td style="max-width:18em;overflow-wrap:anywhere">${esc(k.name)}</td><td colspan="7"><span class="err">건너뜀 — ${esc(k.reason)}</span></td><td><span class="pill bad">읽지 않음</span></td></tr>`).join("");
   $("#ledgerBody").innerHTML = (state.ledgers.length || state.skipped.length) ? skippedRows + state.ledgers.slice().sort((a, b) => order(a) - order(b)).map((l) => `<tr>
       <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}${l.sheet ? `<span class="sub">시트: ${esc(l.sheet)}</span>` : ""}</td>
@@ -1034,10 +1052,10 @@ function render() {
       <td class="amount">${fmt(l.fields.liab?.v)}</td>
       <td class="amount">${fmtNav(l.fields.nav?.v)}</td>
       <td style="font-size:12px">${esc(l.method || "")}${l.check ? `<br><span class="pill ${l.check.s}">${esc(l.check.t)}</span>` : ""}</td>
-      <td class="num">${used.has(l.id) ? used.get(l.id).join(", ") : l.error ? `<span class="pill bad">읽기 실패</span>` : l.value == null ? `<span class="pill warn">총자산 없음</span>` : unmatchedCell(l)}</td>
+      <td class="num">${used.has(l.id) ? used.get(l.id).join(", ") : l.error ? `<span class="pill bad">읽기 실패</span>` : l.superseded ? `<span class="pill mute">결산전 · 제외</span><span class="why">같은 이름의 결산후 파일을 씁니다</span>` : l.value == null ? `<span class="pill warn">총자산 없음</span>` : unmatchedCell(l)}</td>
     </tr>`).join("") : `<tr><td colspan="9" class="empty">장부를 올리면 파일마다 읽은 값이 여기에 나옵니다.</td></tr>`;
 
-  $("#unmatchedBar").hidden = !(state.target && state.ledgers.some((l) => !l.error && l.value != null && !used.has(l.id)));
+  $("#unmatchedBar").hidden = !(state.target && state.ledgers.some((l) => usable(l) && l.value != null && !used.has(l.id)));
   const ready = !!state.target && !state.example;
   $("#btnSave").disabled = !(ready && inc > 0);
 
@@ -1073,7 +1091,7 @@ $("#tbody").addEventListener("change", (e) => {
     let v = e.target.value;
     if (v === "__all") {
       // 전체 장부 목록으로 바꿔 보여 준다
-      const all = state.ledgers.filter((l) => !l.error).map((l) => r.cands.find((c) => c.id === l.id) || { id: l.id, score: 0, why: "" });
+      const all = state.ledgers.filter(usable).map((l) => r.cands.find((c) => c.id === l.id) || { id: l.id, score: 0, why: "" });
       r.cands = all.sort((a, b) => b.score - a.score).map((c) => ({ ...c, score: Math.max(c.score, 0.2001) }));
       render(); return;
     }
@@ -1145,7 +1163,7 @@ const LEDGER_EXT = /\.(xlsx|xlsm|xlsb|xls|csv|html?)$/i;
 function ledgerTally() {
   const okL = state.ledgers.filter((l) => !l.error);
   const read = new Set(okL.map((l) => l.fileName + "\u0000" + l.size)).size, bad = state.ledgers.length - okL.length;
-  return { read, funds: okL.length, bad, skipped: state.skipped.length, dups: state.dups, uploaded: state.uploaded };
+  return { read, funds: okL.length, bad, skipped: state.skipped.length, dups: state.dups, uploaded: state.uploaded, pre: okL.filter((l) => l.superseded).length };
 }
 function renderLedgerInfo() {
   const t = ledgerTally();
@@ -1154,6 +1172,7 @@ function renderLedgerInfo() {
   if (t.bad) parts.push(`<span class="err">읽기 실패 ${t.bad}</span>`);
   if (t.skipped) parts.push(`<span class="err">건너뜀 ${t.skipped}</span>`);
   if (t.dups) parts.push(`같은 파일 중복 ${t.dups}`);
+  if (t.pre) parts.push(`결산후 파일이 있어 결산전 ${t.pre}개 제외`);
   $("#ledgerInfo").innerHTML = `올린 파일 <b>${t.uploaded}개</b> → ${parts.join(" · ")}` +
     (t.bad || t.skipped ? `<br>이유는 아래 ‘장부별 추출값’에 파일마다 나옵니다` : " · 다시 올리면 추가됩니다");
 }
@@ -1179,6 +1198,7 @@ async function onLedgers(files) {
     next += Ls.length;
     state.ledgers.push(...Ls);
   }
+  markSettlement(state.ledgers);
   renderLedgerInfo();
   busy(false);
   const t = ledgerTally();

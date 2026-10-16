@@ -95,3 +95,14 @@ def test_real_cases():
         ranked = sorted(data["targets"], key=lambda n: -scores[n][0]["score"])
         assert ranked[0] == target, f"{variant} → {ranked[0]}"
         assert match_status(target, 0, scores) in allowed
+
+
+def test_settlement_prefers_post_file():
+    import json
+    from pathlib import Path
+    from nav_total_assets.ledger import Ledger, mark_settlement
+    data = json.loads((Path(__file__).resolve().parents[2] / "tests/fixtures/filename-cases.json").read_text(encoding="utf-8"))
+    for c in data["settle_cases"]:
+        ls = [Ledger(id=i, path=Path(f), file_name=f) for i, f in enumerate(c["files"])]
+        mark_settlement(ls)
+        assert [l.file_name for l in ls if l.superseded] == c["superseded"], c

@@ -59,6 +59,8 @@ def main(argv=None) -> int:
     for l in ledgers:
         if l.error:
             print(f"  ! {l.file_name}: {l.error}")
+        elif l.superseded:
+            print(f"  - {l.file_name}: 같은 이름의 결산후 파일이 있어 제외")
 
     if not a.quiet:
         print("\n행   상태    유사도  총자산(원)          검증                  종목명  ←  장부")
@@ -80,7 +82,7 @@ def main(argv=None) -> int:
         print(f"주의: 기준일은 {base}인데 매칭된 장부는 대부분 {common}자입니다. 그래서 {n_mis}행이 '검토'로 분류됐습니다."
               f" 이번 분기가 {common} 기준이면 --base-date {common} 을 붙여 다시 실행하세요.")
     used = {r.ledger.id for r in results if r.ledger}
-    unused = [l for l in ledgers if not l.error and l.id not in used]
+    unused = [l for l in ledgers if not l.error and not l.superseded and l.id not in used]
     if unused:
         print(f"매칭 안 된 장부 {len(unused)}개: " + ", ".join(l.file_name for l in unused[:10]) + (" …" if len(unused) > 10 else ""))
 

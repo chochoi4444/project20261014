@@ -123,11 +123,12 @@ Function Full(ByVal target As String, ByVal dir_ As String, ByVal baseYmd As Str
             nL = nL + 1
         Next
     Next
+    MarkSettlement lds, nL
     ComputeResults lds, nL, baseYmd, False, False, Nothing
     txt = "B" & Chr(9) & baseYmd & Chr(10)
     For i = 0 To nL - 1
         ld = lds(i)
-        txt = txt & "L" & Chr(9) & ld(0) & Chr(9) & ld(1) & Chr(9) & ld(2) & Chr(9) & ld(3) & Chr(9) & ld(4) & Chr(9) & ld(5) & Chr(9) & ValText(ld(8)) & Chr(9) & ld(9) & Chr(9) & ld(11) & Chr(9) & ld(18) & Chr(10)
+        txt = txt & "L" & Chr(9) & ld(0) & Chr(9) & ld(1) & Chr(9) & ld(2) & Chr(9) & ld(3) & Chr(9) & ld(4) & Chr(9) & ld(5) & Chr(9) & ValText(ld(8)) & Chr(9) & ld(9) & Chr(9) & ld(11) & Chr(9) & ld(18) & Chr(9) & IIf(ld(19), "1", "") & Chr(10)
     Next
     For i = 0 To tCount - 1
         txt = txt & "R" & Chr(9) & tRow(i) & Chr(9) & rStatus(i) & Chr(9) & IIf(rInc(i), "Y", "") & Chr(9) & Fmt6(rScore(i)) & Chr(9)
@@ -145,7 +146,7 @@ End Function
 
 ' 매칭 엔진만: 입력 파일의 T(대상)/L(장부, 운용사) 줄 → 점수·근거·배정·상태
 Private Function MakeTestLedger(ByVal nm As String, ByVal mgr As String) As Variant
-    Dim ld(18) As Variant, cc(0) As String
+    Dim ld(19) As Variant, cc(0) As String
     ld(1) = nm: ld(2) = "": ld(3) = mgr
     cc(0) = nm
     ld(16) = cc: ld(17) = 1

@@ -105,8 +105,31 @@ def clean_file_name(name: str) -> str:
     t = re.sub(r"(?<![\dA-Za-z])\d{5,}(?![\dA-Za-z])", " ", t)  # 펀드코드
     t = re.sub(r"(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)", " ", t, flags=re.I)
     t = re.sub(r"20\d{2}\s*년", " ", t)
-    t = re.sub(r"기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본", " ", t)
+    t = re.sub(r"\((결산 ?전|결산 ?후|결산반영)\)|\[(결산 ?전|결산 ?후|결산반영)\]", " ", t)
+    t = re.sub(r"기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본|결산 ?전|결산 ?후|결산반영", " ", t)
     return re.sub(r"\s+", " ", re.sub(r"_+", " ", t)).strip()
+
+
+def settle_tag(file_name: str) -> str:
+    """파일명의 결산 표시: "post"(결산후·결산반영) / "pre"(결산전) / """""
+    t = nfkc(file_name)
+    if re.search(r"결산 ?후|결산반영", t):
+        return "post"
+    if re.search(r"결산 ?전", t):
+        return "pre"
+    return ""
+
+
+def settle_key(file_name: str) -> str:
+    """결산 표시를 뺀 파일명(확장자 제외) — 결산전/결산후 짝을 찾는 열쇠"""
+    return norm_name(re.sub(r"결산 ?전|결산 ?후|결산반영", "", re.sub(r"\.[^.]+$", "", nfkc(file_name))))
+
+
+def mark_settlement(ledgers) -> None:
+    """이름이 같은 결산전·결산후 파일이 모두 있으면 결산전 장부를 빼도록 표시 (시트 장부는 시트까지 같아야 짝)"""
+    post = {settle_key(l.file_name) + "|" + (l.sheet or "") for l in ledgers if not l.error and settle_tag(l.file_name) == "post"}
+    for l in ledgers:
+        l.superseded = settle_tag(l.file_name) == "pre" and (settle_key(l.file_name) + "|" + (l.sheet or "")) in post
 
 
 # ---------- 형식별 읽기 ----------
@@ -401,6 +424,7 @@ class Ledger:
     method: str = ""
     check: tuple = ("mute", "")
     sheet: str | None = None
+    superseded: bool = False  # 같은 이름의 결산후 파일이 있어 뺀 결산전 장부
 
     def as_match_input(self) -> dict:
         return {"id": self.id, "name_cands": self.name_cands, "manager": self.manager,

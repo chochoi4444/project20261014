@@ -14,6 +14,7 @@ def test_synthetic_end_to_end(tmp_path):
     target, ledgers, results, base = run(d / "대상.xlsx", [d / "장부"])
     assert base == "2026-09-30"
     assert all(not l.error for l in ledgers)
+    assert [l.file_name for l in ledgers if l.superseded] == ["가온대체투자일반사모부동산투자신탁101호_기준가격대장_260930(결산전).xlsx"]
     by_name = {r.name: r for r in results}
     for name, value in expected.items():
         r = by_name[name]

@@ -15,7 +15,7 @@ assert.ok(html.includes(START) && html.includes(END), "app.html에서 매칭 엔
 const code = html.slice(html.indexOf(START), html.indexOf(END));
 const cleanFn = html.slice(html.indexOf("function cleanFileName"), html.indexOf("/* ---------- 장부 읽기"));
 const ctx = vm.createContext({});
-vm.runInContext(code + "\n" + cleanFn + "\n;globalThis.E = { cleanFileName, scoreName, matchNames, matchStatus, normName, coreName, nums, cosineSim, buildIdf, AUTO_SCORE, REVIEW_SCORE };", ctx);
+vm.runInContext(code + "\n" + cleanFn + "\n;globalThis.E = { cleanFileName, markSettlement, scoreName, matchNames, matchStatus, normName, coreName, nums, cosineSim, buildIdf, AUTO_SCORE, REVIEW_SCORE };", ctx);
 const E = ctx.E;
 const STATUS_KO = { auto: "자동", review: "검토", nomatch: "미매칭" };
 
@@ -76,6 +76,17 @@ test("코사인 유사도: 같은 이름 1, 겹치는 글자 없으면 0, 흔한
   const idf = E.buildIdf(["가온부동산", "누리부동산", "다온부동산", "가온인프라"]);
   const ratio = (a, b) => E.cosineSim(a, b, idf) / E.cosineSim(a, b);
   assert.ok(ratio("가온부동산", "누리부동산") < ratio("가온부동산", "가온인프라"));
+});
+
+test("이름이 같은 결산전·결산후 파일이 모두 있으면 결산전을 뺀다", async (t) => {
+  const FN = JSON.parse(readFileSync(join(here, "fixtures", "filename-cases.json"), "utf8"));
+  for (const c of FN.settle_cases) {
+    await t.test(c.files.join(" + "), () => {
+      const ls = c.files.map((f, i) => ({ id: i, fileName: f, sheet: null }));
+      E.markSettlement(ls);
+      assert.deepEqual(ls.filter((l) => l.superseded).map((l) => l.fileName), c.superseded);
+    });
+  }
 });
 
 test("파일명의 날짜·펀드코드·사본 표시를 지우고 호수만 남긴다", async (t) => {
