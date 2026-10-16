@@ -197,7 +197,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
       <div class="scroll">
         <table>
           <thead><tr>
-            <th>입력</th><th class="r">행</th><th>종목명 (대상 엑셀)</th><th>기준가격대장</th><th>유사도</th><th class="r">총자산 (원)</th><th>검증</th><th>장부 기준일</th><th>상태</th>
+            <th><label style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="incAll" aria-label="보이는 행 모두 입력"> 입력</label></th><th class="r">행</th><th>종목명 (대상 엑셀)</th><th>기준가격대장</th><th>유사도</th><th class="r">총자산 (원)</th><th>검증</th><th>장부 기준일</th><th>상태</th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -974,6 +974,14 @@ function render() {
     `<span style="margin-left:auto;font-size:13px;color:var(--ink-2)">입력 예정 <b class="num" style="color:var(--ink)">${inc}</b>행</span>`;
   const rows = R.filter((r) => state.filter === "all" || r.status === state.filter);
   const L = (id) => state.ledgers.find((l) => l.id === id);
+  // 머리글 '입력' 체크박스: 지금 보이는 행 중 입력할 수 있는 행 전체를 켜고 끈다
+  const eligible = rows.filter((r) => { const l = r.ledgerId != null ? L(r.ledgerId) : null; return l && l.value != null && r.status !== "skip"; });
+  const nOn = eligible.filter((r) => r.include).length;
+  const all = $("#incAll");
+  all.disabled = !eligible.length || !!state.example;
+  all.checked = eligible.length > 0 && nOn === eligible.length;
+  all.indeterminate = nOn > 0 && nOn < eligible.length;
+  all.title = eligible.length ? `보이는 행 중 입력 가능한 ${eligible.length}행 모두 ${all.checked ? "해제" : "선택"}` : "입력할 수 있는 행이 없습니다";
   $("#tbody").innerHTML = rows.length ? rows.map((r, i) => {
     const l = r.ledgerId != null ? L(r.ledgerId) : null;
     const [pc, pt] = STATUS[r.status];
@@ -1078,6 +1086,17 @@ $("#tbody").addEventListener("change", (e) => {
   }
 });
 $("#overwrite").addEventListener("change", () => { if (!state.example) runMatching(); });
+$("#incAll").addEventListener("change", (e) => {
+  const on = e.target.checked;
+  let n = 0;
+  state.results.forEach((r) => {
+    if (state.filter !== "all" && r.status !== state.filter) return;
+    const l = r.ledgerId != null ? state.ledgers.find((x) => x.id === r.ledgerId) : null;
+    if (l && l.value != null && r.status !== "skip" && r.include !== on) { r.include = on; n++; }
+  });
+  render();
+  toast(on ? `${n}행을 입력하도록 체크했습니다. 검토 행은 저장 전에 금액을 확인하세요` : `${n}행의 체크를 해제했습니다`);
+});
 $("#ledgerBody").addEventListener("change", (e) => {
   if (!e.target.classList.contains("assign") || !e.target.value) return;
   const l = state.ledgers.find((x) => x.id === +e.target.dataset.lid);
