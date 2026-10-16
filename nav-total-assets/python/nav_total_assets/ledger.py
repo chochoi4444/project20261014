@@ -101,6 +101,7 @@ def clean_file_name(name: str) -> str:
     t = re.sub(r"(\d{6,8})[\s_\-]*(\(\d+\)|_\d)\s*$", r"\1", t)
     t = re.sub(r"\s*\(\d+\)\s*$", "", t)
     t = re.sub(r"20\d{6}|(?<!\d)\d{6}(?!\d)", " ", t)
+    t = re.sub(r"(?<![\dA-Za-z])\d{5,}(?![\dA-Za-z])", " ", t)  # 펀드코드
     t = re.sub(r"(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)", " ", t, flags=re.I)
     t = re.sub(r"20\d{2}\s*년", " ", t)
     t = re.sub(r"기준가격대장|기준가대장|신탁재산명세부|재산명세부|명세부|계정원장|원장|조회|사본|복사본", " ", t)

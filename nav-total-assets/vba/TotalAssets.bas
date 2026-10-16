@@ -537,6 +537,64 @@ Public Function LcsRatio(ByVal a As String, ByVal b As String) As Double
 End Function
 
 ' 대상 종목명과 장부 하나의 유사도 (0~1). cands = 장부 이름 후보들(본문 펀드명, 파일명)
+' 펀드명 맨 앞의 사명(운용사). 펀드명은 사명으로 시작하므로 사명이 다르면 다른 펀드다.
+' NormName을 거친 모양으로 적는다 (영문 사명은 별칭 처리로 한글이 된다)
+Private Function ManagerList() As Variant
+    ManagerList = Array("KB", "NH아문디", "NH", "신한", "삼성", "미래에셋", "한화", "키움", "이지스", "마스턴", "코람코", "블랙락", _
+        "유나이티드파트너스", "교보", "현대", "한국투자", "IBK", "DB", "우리", "하나", "하나대체", "하나대체투자", "대신", "메리츠", _
+        "흥국", "타임폴리오", "트러스톤", "신영", "베어링", "슈로더", "피델리티", "JP모간", "멀티에셋", "브이아이", "에셋플러스", _
+        "유진", "BNK", "DGB", "하이", "KTB", "다올", "HDC", "칸서스", "캡스톤", "라살", "인베스코", "알리안츠", "맥쿼리", _
+        "파인스트리트", "제이알", "케이리츠", "한국투자리얼에셋", "삼성SRA", "이지스자산", "코람코자산")
+End Function
+
+Private Function StartsWithB(ByVal s As String, ByVal p As String) As Boolean
+    StartsWithB = (Len(p) > 0 And Len(s) >= Len(p) And Left$(s, Len(p)) = p)
+End Function
+
+Public Function MgrPrefix(ByVal s As String) As String
+    Dim t As String, n As String, best As String, m As Variant, ch As String
+    ' '(블랙락73호)'처럼 괄호로 시작하면 별칭·메모라 펀드명 앞머리로 보지 않는다
+    t = TrimWS(NormText(s))
+    If t <> "" Then
+        ch = Left$(t, 1)
+        If ch = "(" Or ch = "[" Or ch = "{" Or ch = "<" Or ch = ChrW(&HFF08) Or ch = ChrW(&H3010) Then
+            MgrPrefix = ""
+            Exit Function
+        End If
+    End If
+    n = NormName(s)
+    best = ""
+    For Each m In ManagerList()
+        If Len(CStr(m)) > Len(best) Then
+            If StartsWithB(n, CStr(m)) Then best = CStr(m)
+        End If
+    Next
+    MgrPrefix = best
+End Function
+
+' 장부 머리글 운용사명에서 '자산운용' 같은 꼬리를 뗀 사명
+Public Function HeaderMgr(ByVal manager As String) As String
+    Dim t As String, cut As Boolean, w As Variant
+    t = NormName(manager)
+    Do
+        cut = False
+        For Each w In Array("자산운용", "투자운용", "자산관리", "운용", "ASSETMANAGEMENT", "MANAGEMENT", "INVESTMENTTRUST", "INVESTMENT", "TRUST", "MGT", "ASSET", "COLTD", "CO", "LTD", "주식회사")
+            If Len(t) >= Len(CStr(w)) Then
+                If Right$(t, Len(CStr(w))) = CStr(w) Then
+                    t = Left$(t, Len(t) - Len(CStr(w)))
+                    cut = True
+                    Exit For
+                End If
+            End If
+        Next
+    Loop While cut And t <> ""
+    If Len(t) >= 2 Then
+        HeaderMgr = t
+    Else
+        HeaderMgr = ""
+    End If
+End Function
+
 Public Function ScoreName(ByVal target As String, cands As Variant, ByVal nCands As Long, ByVal manager As String, ByRef why As String) As Double
     Dim tn As String, tc As String, tnum As String, best As Double, s As Double, cs As Double, w As String
     Dim k As Long, cand As String, cc As String, cnum As String, mgr As String
@@ -573,6 +631,41 @@ Public Function ScoreName(ByVal target As String, cands As Variant, ByVal nCands
             If s > best Then best = s: why = w
         End If
     Next
+    ' 사명: 장부 쪽(펀드명·파일명 앞머리, 머리글 운용사)과 대상 종목명 앞머리를 맞춘다. 호수보다 우선
+    Dim tm As String, hdr As String, lmFirst As String, lmAny As Boolean, mgrHit As Boolean, x As String
+    tm = MgrPrefix(target): hdr = HeaderMgr(manager)
+    mgrHit = False: lmAny = False: lmFirst = ""
+    If hdr <> "" Then
+        If StartsWithB(tn, hdr) Then mgrHit = True
+    End If
+    For k = 0 To nCands
+        x = ""
+        If k < nCands Then
+            If cands(k) <> "" Then x = MgrPrefix(cands(k))
+        ElseIf hdr <> "" Then
+            x = MgrPrefix(hdr)
+            If x = "" Then x = hdr
+        End If
+        If x <> "" Then
+            If Not lmAny Then lmFirst = x
+            lmAny = True
+            If tm <> "" Then
+                If StartsWithB(tm, x) Or StartsWithB(x, tm) Then mgrHit = True
+            End If
+        End If
+    Next
+    If mgrHit Then
+        best = best + 0.12
+        why = why & " · 사명 일치"
+        If best > 1 Then best = 1
+        ScoreName = best
+        Exit Function
+    End If
+    If tm <> "" And lmAny Then
+        why = why & " · 사명 다름(" & tm & "≠" & lmFirst & ")"
+        ScoreName = best * 0.3
+        Exit Function
+    End If
     mgr = NormName(manager)
     If mgr <> "" And Len(tn) >= 4 Then
         If InStr(1, mgr, Left$(tn, 4), CMP_BINARY) > 0 Then
@@ -640,7 +733,7 @@ Public Sub MatchNames(names() As String, ByVal nT As Long, lds() As Variant, ByV
                 If NumsKey(names(t)) = cn Then hits = hits + 1: hitT = t
             Next
             If hits = 1 Then
-                If mScores(hitT, l) < 0.62 Then mScores(hitT, l) = 0.62: mWhys(hitT, l) = "호수만 유일하게 일치"
+                If mScores(hitT, l) < 0.62 And InStr(1, mWhys(hitT, l), "사명 다름", CMP_BINARY) = 0 Then mScores(hitT, l) = 0.62: mWhys(hitT, l) = "호수만 유일하게 일치"
             End If
         End If
     Next
@@ -971,7 +1064,7 @@ Public Function CleanFileName(ByVal fileName As String) As String
             i = i + 1
         End If
     Loop
-    t = out
+    t = DropFundCodes(out)
     ' '2026년 2분기', '2Q' 같은 분기·연도 표기
     t = RemoveQuarter(t)
     For Each w In Array("기준가격대장", "기준가대장", "신탁재산명세부", "재산명세부", "명세부", "계정원장", "원장", "조회", "사본", "복사본")
@@ -982,6 +1075,36 @@ Public Function CleanFileName(ByVal fileName As String) As String
         t = Replace(t, "  ", " ")
     Loop
     CleanFileName = TrimWS(t)
+End Function
+
+' 영문자에 붙지 않은 5자리 이상 숫자(펀드코드) → 공백
+Private Function DropFundCodes(ByVal t As String) As String
+    Dim i As Long, rl As Long, out As String, okL As Boolean, okR As Boolean
+    i = 1
+    Do While i <= Len(t)
+        rl = DigitRunLen(t, i, 999)
+        If rl > 0 Then
+            okL = True: okR = True
+            If i > 1 Then okL = Not IsAsciiAlpha(Mid$(t, i - 1, 1))
+            If i + rl <= Len(t) Then okR = Not IsAsciiAlpha(Mid$(t, i + rl, 1))
+            If rl >= 5 And okL And okR Then
+                out = out & " "
+            Else
+                out = out & Mid$(t, i, rl)
+            End If
+            i = i + rl
+        Else
+            out = out & Mid$(t, i, 1)
+            i = i + 1
+        End If
+    Loop
+    DropFundCodes = out
+End Function
+
+Private Function IsAsciiAlpha(ByVal ch As String) As Boolean
+    Dim c As Long
+    c = CodeOf(ch)
+    IsAsciiAlpha = (c >= 65 And c <= 90) Or (c >= 97 And c <= 122)
 End Function
 
 Private Function IsDateSep(ByVal ch As String, ByVal withUnderscore As Boolean) As Boolean

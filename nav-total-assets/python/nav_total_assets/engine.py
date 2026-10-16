@@ -129,6 +129,43 @@ def lcs_ratio(a: str, b: str) -> float:
     return 2 * prev[len(b)] / (len(a) + len(b))
 
 
+# 펀드명 맨 앞의 사명(운용사). 펀드명은 사명으로 시작하므로 사명이 다르면 다른 펀드다.
+# norm_name을 거친 모양으로 적는다 (영문 사명은 ALIASES가 한글로 바꿔 준다)
+MANAGERS = ["KB", "NH아문디", "NH", "신한", "삼성", "미래에셋", "한화", "키움", "이지스", "마스턴", "코람코", "블랙락",
+            "유나이티드파트너스", "교보", "현대", "한국투자", "IBK", "DB", "우리", "하나", "하나대체", "하나대체투자", "대신", "메리츠",
+            "흥국", "타임폴리오", "트러스톤", "신영", "베어링", "슈로더", "피델리티", "JP모간", "멀티에셋", "브이아이", "에셋플러스",
+            "유진", "BNK", "DGB", "하이", "KTB", "다올", "HDC", "칸서스", "캡스톤", "라살", "인베스코", "알리안츠", "맥쿼리",
+            "파인스트리트", "제이알", "케이리츠", "한국투자리얼에셋", "삼성SRA", "이지스자산", "코람코자산"]
+_MGR_SUFFIX = re.compile(r"(자산운용|투자운용|자산관리|운용|ASSETMANAGEMENT|MANAGEMENT|INVESTMENTTRUST|INVESTMENT|TRUST|MGT|ASSET|COLTD|CO|LTD|주식회사)+$")
+
+
+def mgr_prefix(s) -> str:
+    # '(블랙락73호)'처럼 괄호로 시작하면 별칭·메모라 펀드명 앞머리로 보지 않는다
+    if re.match(r"\s*[(\[{（【<]", nfkc(s)):
+        return ""
+    n = norm_name(s)
+    best = ""
+    for m in MANAGERS:
+        if len(m) > len(best) and n.startswith(m):
+            best = m
+    return best
+
+
+def _mgr_compat(a: str, b: str) -> bool:
+    return a.startswith(b) or b.startswith(a)
+
+
+def header_mgr(manager) -> str:
+    """장부 머리글 운용사명에서 '자산운용' 같은 꼬리를 뗀 사명"""
+    t = norm_name(manager)
+    while t:
+        u = _MGR_SUFFIX.sub("", t)
+        if u == t:
+            break
+        t = u
+    return t if len(t) >= 2 else ""
+
+
 # 이름 유사도 = 코사인(TF-IDF) 60% + 글자 순서 일치(LCS) 40%
 COSINE_WEIGHT = 0.6
 
@@ -161,6 +198,16 @@ def score_name(target: str, ledger: dict, idf: Idf | None = None) -> tuple[float
             s *= 0.8
         if s > best:
             best, why = s, w
+    # 사명: 장부 쪽(펀드명·파일명 앞머리, 머리글 운용사)과 대상 종목명 앞머리를 맞춘다. 호수보다 우선
+    tm, hdr = mgr_prefix(target), header_mgr(ledger.get("manager") or "")
+    lm = [mgr_prefix(c) for c in ledger.get("name_cands", []) if c]
+    if hdr:
+        lm.append(mgr_prefix(hdr) or hdr)
+    lms = [x for x in lm if x]
+    if (hdr and tn.startswith(hdr)) or (tm and any(_mgr_compat(tm, x) for x in lms)):
+        return min(1.0, best + 0.12), why + " · 사명 일치"
+    if tm and lms:
+        return best * 0.3, why + f" · 사명 다름({tm}≠{lms[0]})"
     mgr = norm_name(ledger.get("manager") or "")
     if mgr and len(tn) >= 4:
         if tn[:4] in mgr:
@@ -203,7 +250,7 @@ def match_names(names: Iterable[str], ledgers: list[dict], forced: dict | None =
         hits = [n for n in uniq if nums(n) == cn]
         if len(hits) == 1:
             e = next(x for x in scores[hits[0]] if x["id"] == l["id"])
-            if e["score"] < 0.62:
+            if e["score"] < 0.62 and "사명 다름" not in e["why"]:
                 e["score"], e["why"] = 0.62, "호수만 유일하게 일치"
     assign, used = {}, set()
     for n, lid in forced.items():
