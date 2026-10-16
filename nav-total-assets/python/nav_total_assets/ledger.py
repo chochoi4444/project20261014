@@ -399,6 +399,13 @@ def extract_meta(rows: list[list[Cell]], upto: int | None):
             if d:
                 meta["date"] = d
                 break
+    if "date" not in meta:  # 제목 아래에 엑셀 날짜 숫자(예: 46295)만 있는 행
+        for i in range(lim):
+            if len(rows[i]) == 1 and _is_num(rows[i][0]):
+                d = serial_to_iso(rows[i][0].v)
+                if d:
+                    meta["date"] = d
+                    break
     return meta
 
 
@@ -424,6 +431,7 @@ class Ledger:
     method: str = ""
     check: tuple = ("mute", "")
     sheet: str | None = None
+    tabs: dict | None = None  # 탭이 여러 개인 파일: {"total", "used", "skipped": [{"sheet", "reason"}]}
     superseded: bool = False  # 같은 이름의 결산후 파일이 있어 뺀 결산전 장부
 
     def as_match_input(self) -> dict:
@@ -473,6 +481,7 @@ def parse_ledgers(path: Path, start_id: int) -> list[Ledger]:
         mult = UNIT_MULT.get(p["meta"].get("unit"), 1)
         for key, f in p["ex"]["fields"].items():
             L.fields[key] = {**f, "v": f["v"] * mult if key in AMOUNT_FIELDS else f["v"]}
+        L.tabs = p["tabs"]
         out.append(_finish(L, p["sheet"] if len(picks) > 1 else None))
     return out
 
@@ -482,23 +491,49 @@ def parse_ledger(path: Path, lid: int) -> Ledger:
     return parse_ledgers(path, lid)[0]
 
 
+DUP_TAB = "같은 펀드의 다른 원장 탭 (내용이 더 많은 탭 사용)"
+
+
 def _split_funds(infos: list[dict]) -> list[dict]:
-    """펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로, 아니면 가장 내용이 많은 시트 하나"""
-    funds: dict = {}
-    for x in infos:
+    """탭 나누기 (웹판 splitFunds와 같음).
+
+    원장 탭 = '당일잔액/금일잔액' 머리글 + 자산·총자산·순자산 계정이 있는 탭(탭 이름과 무관).
+    원장 탭에서 서로 다른 펀드명이 2개 이상이면 펀드마다 장부 1개(펀드명 없는 원장 탭은 탭 이름을 펀드명 대신),
+    아니면 내용이 가장 많은 탭 하나. 쓰지 않은 탭은 이유와 함께 tabs["skipped"]에 남긴다.
+    """
+    def is_ledger(x):
         f = x["ex"]["fields"]
-        if not x["ex"]["has_header"] or not x["meta"].get("name") or not ("asset" in f or "total" in f or "net" in f):
-            continue
-        k = norm_name(x["meta"]["name"])
-        if k not in funds or funds[k]["rank"] < x["rank"]:
-            funds[k] = x
-    if len(funds) >= 2:
-        return list(funds.values())
-    best = infos[0]
-    for x in infos:
-        if x["rank"] > best["rank"]:
-            best = x
-    return [best]
+        return x["ex"]["has_header"] and ("asset" in f or "total" in f or "net" in f)
+
+    skipped = [{"sheet": x["sheet"], "reason": "원장 아님 (자산·순자산 계정 없음)" if x["ex"]["has_header"] else "원장 아님 (당일·금일잔액 머리글 없음)"}
+               for x in infos if not is_ledger(x)]
+    led = [x for x in infos if is_ledger(x)]
+    names = {norm_name(x["meta"]["name"]) for x in led if x["meta"].get("name")}
+    if len(names) >= 2:
+        funds: dict = {}
+        for x in led:
+            k = norm_name(x["meta"].get("name") or clean_file_name(x["sheet"] + ".x")) or x["sheet"]
+            if k not in funds:
+                funds[k] = x
+            elif funds[k]["rank"] < x["rank"]:
+                skipped.append({"sheet": funds[k]["sheet"], "reason": DUP_TAB})
+                funds[k] = x
+            else:
+                skipped.append({"sheet": x["sheet"], "reason": DUP_TAB})
+        picks = list(funds.values())
+    else:
+        pool = led or infos
+        best = pool[0]
+        for x in pool:
+            if x["rank"] > best["rank"]:
+                best = x
+        skipped += [{"sheet": x["sheet"], "reason": DUP_TAB} for x in led if x is not best]
+        picks = [best]
+    order = {x["sheet"]: i for i, x in enumerate(infos)}
+    tabs = {"total": len(infos), "used": [x["sheet"] for x in picks], "skipped": sorted(skipped, key=lambda k: order.get(k["sheet"], 0))}
+    for x in picks:
+        x["tabs"] = tabs
+    return picks
 
 
 def _finish(L: Ledger, sheet: str | None) -> Ledger:

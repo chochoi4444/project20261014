@@ -29,10 +29,11 @@ def make(out: Path):
         ["", "예시법인용MMF 1(국공채)C", "MMF", "제외", "KRZ000000004"],
         ["", "보람에너지풍력사모특별자산투자신탁", "주식형", None, "KRZ000000005"],
         ["", "보람에너지태양광사모특별자산투자신탁", "주식형", None, "KRZ000000006"],
+        ["", "보람에너지지열사모특별자산투자신탁", "주식형", None, "KRZ000000007"],
     ]
     for r in rows:
         ws.append(r)
-    for r in range(2, 8):
+    for r in range(2, 9):
         ws.cell(r, 4).number_format = "#,##0"
     dv = DataValidation(type="list", formula1='"A,B"')
     ws.add_data_validation(dv)
@@ -84,6 +85,19 @@ def make(out: Path):
         ws.append([asset, 0, asset, "[자산]", "1000000"])
         ws.append([None, None, None, "[부채]", "2000000", liab, 0, liab])
         ws.append([None, None, None, "순자산총액", "9011100", asset - liab, 0, asset - liab])
+    # 보유종목 명세 탭(원장 아님)과, 펀드명 칸 없이 제목 아래 엑셀 날짜 숫자만 있는 원장 탭
+    ws = wb.create_sheet("통합명세부_풍력")
+    ws.append([None, "통합명세부"])
+    ws.append(["자산구분", "종목명", "수량", "취득액", "평가손익"])
+    ws.append(["주식", "가상발전(주)", 100, 2_900_000_000, 0])
+    ws = wb.create_sheet("총계정원장_보람에너지지열")
+    ws.append([None, None, None, "총계정원장"])
+    ws.append([None, None, None, 46295])
+    ws.append([])
+    ws.append(["금일잔액", "금일증감", "전일잔액", "계정과목", "계정코드", "전일잔액", "금일증감", "금일잔액"])
+    ws.append([800_000_000, 0, 800_000_000, "[자산]", "100000"])
+    ws.append([None, None, None, "[부채]", "200000", 2_000_000, 0, 2_000_000])
+    ws.append([None, None, None, "신탁재산순자산총액", "A10300", 798_000_000, 0, 798_000_000])
     wb.save(ledgers / "02. 보람에너지 마감자료_260930.xlsx")
 
     expected = {"가온대체투자전문투자형사모부동산투자신탁101호": 5_100_000_000,

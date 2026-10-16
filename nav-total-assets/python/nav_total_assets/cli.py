@@ -61,6 +61,13 @@ def main(argv=None) -> int:
             print(f"  ! {l.file_name}: {l.error}")
         elif l.superseded:
             print(f"  - {l.file_name}: 같은 이름의 결산후 파일이 있어 제외")
+    seen = set()
+    for l in ledgers:  # 탭이 여러 개인 파일: 쓴 탭과 건너뛴 탭
+        if l.tabs and l.tabs["total"] > 1 and l.file_name not in seen:
+            seen.add(l.file_name)
+            print(f"  · {l.file_name}: 탭 {l.tabs['total']}개 → 원장 {len(l.tabs['used'])}개 사용 ({', '.join(l.tabs['used'])})")
+            for k in l.tabs["skipped"]:
+                print(f"      건너뜀 {k['sheet']} — {k['reason']}")
 
     if not a.quiet:
         print("\n행   상태    유사도  총자산(원)          검증                  종목명  ←  장부")

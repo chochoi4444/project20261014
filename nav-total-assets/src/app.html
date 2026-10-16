@@ -137,6 +137,7 @@ td select { max-width: 22em; width: 100%; border: 1px solid var(--rule-strong); 
 @media (prefers-reduced-motion: reduce) { .spin { animation: none } * { transition: none !important } }
 details.ledgers summary { cursor: pointer; padding: 12px 16px; font-weight: 600 }
 details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
+details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary { padding: 0; font-weight: 400; border-bottom: 0 }
 .err { color: var(--bad) }
 </style>
 
@@ -705,6 +706,8 @@ function extractMeta(rows, upto) {
   if (cm) { meta.code ??= cm[1]; meta.name = cm[2].trim(); }
   // 날짜 표시가 따로 없으면 머리글에서 처음 나오는 날짜 (파이썬·매크로판과 같음)
   if (!meta.date) outer: for (let i = 0; i < lim; i++) for (const c of rows[i]) if (typeof c.v === "string") { const d = dateFromText(c.v); if (d) { meta.date = d; break outer; } }
+  // 제목 아래에 엑셀 날짜 숫자(예: 46295)만 있는 행
+  if (!meta.date) for (let i = 0; i < lim; i++) if (rows[i].length === 1) { const d = serialToISO(rows[i][0].v); if (d) { meta.date = d; break; } }
   return meta;
 }
 
@@ -735,21 +738,41 @@ async function parseLedgers(file, startId) {
     const L = { id: startId + k, fileName: file.name, size: file.size, fields: {}, meta: p.meta };
     const mult = UNIT_MULT[p.meta.unit] || 1;
     for (const [key, f] of Object.entries(p.ex.fields)) L.fields[key] = { ...f, v: AMOUNT_FIELDS.includes(key) ? f.v * mult : f.v };
+    L.tabs = p.tabs;
     return finishLedger(L, file.name, picks.length > 1 ? p.sheet : null);
   });
 }
 /* 펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로, 아니면 가장 내용이 많은 시트 하나 */
+/* 탭 나누기.
+   원장 탭 = '당일잔액/금일잔액' 머리글 + 자산·총자산·순자산 계정이 있는 탭 (탭 이름이 기준가격대장이든 총계정원장이든 상관없음).
+   원장 탭에서 서로 다른 펀드명이 2개 이상이면 펀드마다 장부 1개(펀드명 없는 원장 탭은 탭 이름을 펀드명 대신),
+   아니면 내용이 가장 많은 탭 하나. 쓰지 않은 탭은 이유와 함께 tabs.skipped에 남긴다. */
 function splitFunds(sheets) {
-  const funds = new Map();
-  for (const x of sheets) {
-    if (!x.ex.hasHeader || !x.meta.name || !(x.ex.fields.asset || x.ex.fields.total || x.ex.fields.net)) continue;
-    const k = normName(x.meta.name);
-    if (!funds.has(k) || funds.get(k).rank < x.rank) funds.set(k, x);
+  const isLedger = (x) => x.ex.hasHeader && !!(x.ex.fields.asset || x.ex.fields.total || x.ex.fields.net);
+  const skipped = [];
+  for (const x of sheets) if (!isLedger(x)) skipped.push({ sheet: x.sheet, reason: x.ex.hasHeader ? "원장 아님 (자산·순자산 계정 없음)" : "원장 아님 (당일·금일잔액 머리글 없음)" });
+  const led = sheets.filter(isLedger);
+  const names = new Set(led.filter((x) => x.meta.name).map((x) => normName(x.meta.name)));
+  let picks;
+  if (names.size >= 2) {
+    const funds = new Map();
+    for (const x of led) {
+      const k = normName(x.meta.name || cleanFileName(x.sheet + ".x")) || x.sheet;
+      if (!funds.has(k)) funds.set(k, x);
+      else if (funds.get(k).rank < x.rank) { skipped.push({ sheet: funds.get(k).sheet, reason: "같은 펀드의 다른 원장 탭 (내용이 더 많은 탭 사용)" }); funds.set(k, x); }
+      else skipped.push({ sheet: x.sheet, reason: "같은 펀드의 다른 원장 탭 (내용이 더 많은 탭 사용)" });
+    }
+    picks = [...funds.values()];
+  } else {
+    const pool = led.length ? led : sheets;
+    let best = pool[0];
+    for (const x of pool) if (x.rank > best.rank) best = x;
+    for (const x of led) if (x !== best) skipped.push({ sheet: x.sheet, reason: "같은 펀드의 다른 원장 탭 (내용이 더 많은 탭 사용)" });
+    picks = [best];
   }
-  if (funds.size >= 2) return [...funds.values()];
-  let best = sheets[0];
-  for (const x of sheets) if (x.rank > best.rank) best = x;
-  return [best];
+  const tabs = { total: sheets.length, used: picks.map((x) => x.sheet), skipped: skipped.sort((a, b) => sheets.findIndex((x) => x.sheet === a.sheet) - sheets.findIndex((x) => x.sheet === b.sheet)) };
+  picks.forEach((x) => (x.tabs = tabs));
+  return picks;
 }
 function finishLedger(L, fileName, sheet) {
   L.sheet = sheet;
@@ -933,6 +956,14 @@ function scoreCell(s) {
 }
 
 /* 매칭 안 된 장부: 가장 가까운 종목과 이유를 보여 주고, 직접 고를 수 있게 한다 */
+/* 탭이 여러 개인 파일: 몇 개 중 원장 몇 개를 썼고, 건너뛴 탭은 왜인지 */
+function tabsNote(l) {
+  const t = l.tabs;
+  if (!t || t.total < 2) return "";
+  return `<details class="tabs" style="font-size:12px;color:var(--ink-2);margin-top:2px"><summary>탭 ${t.total}개 → 원장 ${t.used.length}개 사용${t.skipped.length ? ` · ${t.skipped.length}개 건너뜀` : ""}</summary>` +
+    t.skipped.map((k) => `<div>· ${esc(k.sheet)} — ${esc(k.reason)}</div>`).join("") + `</details>`;
+}
+
 /* 매칭 안 된 장부: 대상 종목별 점수(높은 순)와 추정 원인 */
 function ledgerCands(l) {
   const taken = new Set(state.results.filter((r) => r.ledgerId != null).map((r) => r.name));
@@ -970,7 +1001,7 @@ function unmatchedReport() {
   const out = [`매칭 안 됨 ${L.length}건`];
   L.forEach((l, k) => {
     const c = ledgerCands(l);
-    out.push("", `${k + 1}. ${l.fileName}${l.sheet ? ` [시트 ${l.sheet}]` : ""}`,
+    out.push("", `${k + 1}. ${l.fileName}${l.sheet ? ` [탭 ${l.sheet}]` : ""}`,
       `   본문 펀드명: ${l.name || "(없음)"}`,
       `   파일명 정리: ${l.fileTitle}`,
       `   비교한 핵심이름: ${coreName(l.name || l.fileTitle)}  호수: ${nums(l.name || l.fileTitle).join(",") || "없음"}`,
@@ -1044,7 +1075,7 @@ function render() {
   const order = (l) => (l.error ? 0 : l.superseded ? 4 : l.value == null ? 1 : used.has(l.id) ? 3 : 2);
   const skippedRows = state.skipped.map((k) => `<tr><td style="max-width:18em;overflow-wrap:anywhere">${esc(k.name)}</td><td colspan="7"><span class="err">건너뜀 — ${esc(k.reason)}</span></td><td><span class="pill bad">읽지 않음</span></td></tr>`).join("");
   $("#ledgerBody").innerHTML = (state.ledgers.length || state.skipped.length) ? skippedRows + state.ledgers.slice().sort((a, b) => order(a) - order(b)).map((l) => `<tr>
-      <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}${l.sheet ? `<span class="sub">시트: ${esc(l.sheet)}</span>` : ""}</td>
+      <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}${l.sheet ? `<span class="sub">탭: ${esc(l.sheet)}</span>` : ""}${tabsNote(l)}</td>
       <td style="max-width:20em">${l.error ? `<span class="err">${esc(l.error)}</span>` : esc(l.name || l.fileTitle)}${l.code ? `<span class="sub">코드 ${esc(l.code)}</span>` : ""}${l.manager ? `<span class="sub">${esc(l.manager)}</span>` : ""}</td>
       <td class="num">${l.date || ""}</td>
       <td class="amount">${fmt(l.value)}</td>

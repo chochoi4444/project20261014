@@ -1548,6 +1548,18 @@ NextRowM:
             End If
         Next
     End If
+    ' 제목 아래에 엑셀 날짜 숫자(예: 46295)만 있는 행
+    If mDate = "" Then
+        For i = 1 To lim
+            If rowsN(i) = 1 Then
+                vv = rowsV(i)
+                If Not IsStrCell(vv(0)) Then
+                    d = SerialToISO(vv(0))
+                    If d <> "" Then mDate = d: Exit For
+                End If
+            End If
+        Next
+    End If
     ' '[10101] 펀드명'처럼 앞에 붙은 펀드코드는 떼어 코드로
     If Len(mName) > 2 Then
         If Left$(mName, 1) = "[" Or Left$(mName, 1) = "(" Then
@@ -1700,25 +1712,48 @@ Public Function BuildLedgers(ByVal path As String, ByVal fileName As String, she
             If s <= UBound(sheetNames) Then sName(s) = CStr(sheetNames(s))
         End If
     Next
-    ' 펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로
-    Dim fKey() As String, fIdx() As Long, nF As Long, k As Long, key As String, hit As Long, pv As Variant
-    ReDim fKey(nSheets - 1): ReDim fIdx(nSheets - 1): nF = 0
+    ' 원장 탭 = '당일잔액/금일잔액' 머리글 + 자산·총자산·순자산 계정이 있는 탭(탭 이름과 무관).
+    ' 원장 탭에서 서로 다른 펀드명이 2개 이상이면 펀드마다 장부 1개(펀드명 없는 원장 탭은 탭 이름을 펀드명 대신),
+    ' 아니면 내용이 가장 많은 탭 하나
+    Dim isLed() As Boolean, nNamed As Long, namedKeys() As String, fKey() As String, fIdx() As Long, nF As Long
+    Dim k As Long, key As String, hit As Long, pv As Variant, nLed As Long
+    ReDim isLed(nSheets - 1): ReDim namedKeys(nSheets - 1): ReDim fKey(nSheets - 1): ReDim fIdx(nSheets - 1)
+    nNamed = 0: nF = 0: nLed = 0
     For s = 0 To nSheets - 1
         pv = sPri(s)
-        If sHdr(s) And sMeta(s)(0) <> "" And (pv(3) >= 0 Or pv(0) >= 0 Or pv(1) >= 0) Then
-            key = NormName(sMeta(s)(0))
-            hit = -1
-            For k = 0 To nF - 1
-                If fKey(k) = key Then hit = k: Exit For
-            Next
-            If hit < 0 Then
-                fKey(nF) = key: fIdx(nF) = s: nF = nF + 1
-            ElseIf sRank(fIdx(hit)) < sRank(s) Then
-                fIdx(hit) = s
+        isLed(s) = sHdr(s) And (pv(3) >= 0 Or pv(0) >= 0 Or pv(1) >= 0)
+        If isLed(s) Then
+            nLed = nLed + 1
+            If sMeta(s)(0) <> "" Then
+                key = NormName(sMeta(s)(0))
+                hit = -1
+                For k = 0 To nNamed - 1
+                    If namedKeys(k) = key Then hit = k: Exit For
+                Next
+                If hit < 0 Then namedKeys(nNamed) = key: nNamed = nNamed + 1
             End If
         End If
     Next
-    If nF >= 2 Then
+    If nNamed >= 2 Then
+        For s = 0 To nSheets - 1
+            If isLed(s) Then
+                If sMeta(s)(0) <> "" Then
+                    key = NormName(sMeta(s)(0))
+                Else
+                    key = NormName(CleanFileName(sName(s) & ".x"))
+                End If
+                If key = "" Then key = sName(s)
+                hit = -1
+                For k = 0 To nF - 1
+                    If fKey(k) = key Then hit = k: Exit For
+                Next
+                If hit < 0 Then
+                    fKey(nF) = key: fIdx(nF) = s: nF = nF + 1
+                ElseIf sRank(fIdx(hit)) < sRank(s) Then
+                    fIdx(hit) = s
+                End If
+            End If
+        Next
         ReDim out(nF - 1)
         For k = 0 To nF - 1
             s = fIdx(k)
@@ -1726,9 +1761,15 @@ Public Function BuildLedgers(ByVal path As String, ByVal fileName As String, she
         Next
         nOut = nF
     Else
-        hit = 0
-        For s = 1 To nSheets - 1
-            If sRank(s) > sRank(hit) Then hit = s
+        hit = -1
+        For s = 0 To nSheets - 1
+            If isLed(s) Or nLed = 0 Then
+                If hit < 0 Then
+                    hit = s
+                ElseIf sRank(s) > sRank(hit) Then
+                    hit = s
+                End If
+            End If
         Next
         ReDim out(0)
         out(0) = MakeLedger(path, fileName, "", sFv(hit), sPri(hit), sLab(hit), sMeta(hit), "")

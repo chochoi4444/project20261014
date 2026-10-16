@@ -23,10 +23,15 @@ def test_synthetic_end_to_end(tmp_path):
         assert r.ledger.method.endswith("당일잔액")
     # 통합 파일 하나에서 펀드 2개를 시트별로 읽는다
     for name, value, sheet in [("보람에너지풍력사모특별자산투자신탁", 3_000_000_000, "총계정원장_풍력"),
-                               ("보람에너지태양광사모특별자산투자신탁", 1_500_000_000, "총계정원장_태양광")]:
+                               ("보람에너지태양광사모특별자산투자신탁", 1_500_000_000, "총계정원장_태양광"),
+                               ("보람에너지지열사모특별자산투자신탁", 800_000_000, "총계정원장_보람에너지지열")]:
         r = by_name[name]
         assert r.ledger and r.ledger.sheet == sheet and round(r.ledger.value) == value, (name, r.status, r.notes)
         assert r.status in ("auto", "review")
+    multi = [l for l in ledgers if l.file_name.startswith("02.")]
+    assert len(multi) == 3 and all(l.date == "2026-09-30" for l in multi)
+    skipped = {k["sheet"]: k["reason"] for k in multi[0].tabs["skipped"]}
+    assert set(skipped) == {"마감자료", "통합명세부_풍력"} and all(v.startswith("원장 아님") for v in skipped.values())
     assert by_name["예시법인용MMF 1(국공채)C"].status == "skip"
     assert by_name["가온대체투자전문투자형사모부동산투자신탁102호"].status == "nomatch"  # 101호 장부에 붙으면 안 된다
     out = tmp_path / "out.xlsx"
