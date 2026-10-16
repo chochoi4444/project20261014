@@ -61,7 +61,7 @@ def make(out: Path):
     ws.append([None, None, None, None, None, "700001", "순자산총액", None, None, 20_600_000_000, None, -100_000, None, 20_599_900_000])
     wb.save(ledgers / "누리해외부동산1호_신탁재산명세부_260930.xlsx")
 
-    expected = {"가온대체투자전문투자형사모부동산투자신탁101호": 5_000_000_000,
+    expected = {"가온대체투자전문투자형사모부동산투자신탁101호": 5_100_000_000,
                 "누리파트너스전문투자형사모부동산투자신탁유럽제1호": 21_000_000_000}
     (out / "expected.json").write_text(json.dumps(expected, ensure_ascii=False), encoding="utf-8")
     return out

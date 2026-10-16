@@ -24,7 +24,7 @@ await page.goto(process.env.PAGE_URL || pathToFileURL(page_).href);
 await page.setInputFiles("#targetFile", payload(TARGET));
 await page.waitForFunction(() => document.querySelector("#targetInfo").textContent.includes("행"));
 await page.setInputFiles("#ledgerFiles", readdirSync(LEDGERS).map((f) => payload(join(LEDGERS, f))));
-await page.waitForFunction(() => /개<\/b> 읽음/.test(document.querySelector("#ledgerInfo").innerHTML), null, { timeout: 60000 });
+await page.waitForFunction(() => /읽음 <b>[1-9]/.test(document.querySelector("#ledgerInfo").innerHTML), null, { timeout: 60000 });
 if (process.env.BASE_DATE) {
   await page.fill("#baseDate", process.env.BASE_DATE);
   await page.dispatchEvent("#baseDate", "change");

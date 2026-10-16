@@ -149,7 +149,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
       </div>
       <span class="privacy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>파일은 이 브라우저 안에서만 처리됩니다</span>
     </div>
-    <p class="lede">대상 엑셀과 펀드별 기준가격대장(엑셀)을 올리면, 펀드명이 조금씩 달라도 가장 가까운 장부를 찾아 총자산을 읽고, 순자산+부채로 다시 맞춰 본 뒤 원본 양식 그대로 총자산 칸만 채워 저장합니다.</p>
+    <p class="lede">대상 엑셀과 펀드별 기준가격대장(엑셀)을 올리면, 펀드명이 조금씩 달라도 가장 가까운 장부를 찾아 명세부 ‘자산’ 계정의 당일잔액을 읽은 뒤 원본 양식 그대로 총자산 칸만 채워 저장합니다.</p>
     <nav class="tabs" aria-label="섹션">
       <a href="#work" data-tab="work" aria-current="page">작업</a>
       <a href="#findings" data-tab="findings">추출 가능 항목 검토</a>
@@ -243,7 +243,7 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
         <table>
           <thead><tr><th>항목</th><th>양식 A<span class="sub">계정원장 및 기준가격대장 · 5자리 계정코드 · .xls</span></th><th>양식 B<span class="sub">기준가격대장 조회 · 10자리 계정코드 · .xlsx</span></th><th>양식 C<span class="sub">기준가격대장 · 6자리 계정코드 · .xls</span></th><th>엑셀 입력</th></tr></thead>
           <tbody>
-            <tr><td><b>총자산</b><span class="sub">평가손익 반영 후 신탁재산 총자산</span></td><td class="yes">신탁자산총자산</td><td class="yes">신탁재산총자산</td><td class="part">계정 없음 → 순자산총액+부채합계</td><td><span class="pill ok">입력 중</span></td></tr>
+            <tr><td><b>총자산</b><span class="sub">‘자산’ 계정 당일잔액(차변)</span></td><td class="yes">자산</td><td class="yes">[[ 자산 ]]</td><td class="yes">자산합계</td><td><span class="pill ok">입력 중</span></td></tr>
             <tr><td>순자산총액</td><td class="yes">신탁재산순자산총액</td><td class="yes">신탁재산순자산총액</td><td class="yes">순자산총액</td><td><span class="pill mute">확인 필요</span></td></tr>
             <tr><td>부채총액</td><td class="yes">부채 / 신탁자산총부채</td><td class="yes">[[ 부채 ]]</td><td class="yes">부채합계</td><td><span class="pill mute">확인 필요</span></td></tr>
             <tr><td>기준가격</td><td class="yes">수익증권기준가격</td><td class="yes">수익증권기준가격</td><td class="yes">기준가</td><td><span class="pill mute">확인 필요</span></td></tr>
@@ -259,18 +259,18 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
 
     <div class="grid2">
       <div class="card">
-        <h3>총자산은 ‘자산’ 계정 잔액과 다를 수 있습니다</h3>
-        <p>양식 A·B의 맨 위 <b>자산</b> 계정은 평가손익이 빠진 장부가입니다. 해외자산 평가손익이 큰 펀드에서는 신탁재산 총자산과 수십억 원 차이가 납니다. 그래서 프로그램은 ‘자산’ 계정을 그대로 쓰지 않고 아래 순서로 값을 정합니다.</p>
-        <div class="formula">1순위  신탁재산총자산 · 신탁자산총자산 계정
-2순위  신탁재산순자산총액 + 부채총액
-3순위  자산합계 (장부가일 수 있어 ‘검토’ 표시)
+        <h3>총자산 = 명세부 ‘자산’ 계정의 당일잔액</h3>
+        <p>명세부 맨 위 <b>자산</b>(자산합계·자산총계) 계정의 당일잔액(차변)을 그대로 넣습니다. 이 계정이 없는 장부만 아래 순서로 대신 정하고 ‘검토’로 표시합니다.</p>
+        <div class="formula">1순위  자산 · 자산합계 · 자산총계 계정 당일잔액
+2순위  신탁재산총자산 · 신탁자산총자산 계정
+3순위  신탁재산순자산총액 + 부채총액 (‘검토’ 표시)
 
-검증   총자산 = 순자산총액 + 부채  (10원 이내면 일치)</div>
+참고   신탁자산총자산 또는 순자산+부채와의 차이를 함께 보여 줍니다</div>
       </div>
       <div class="card">
         <h3>샘플 3개 검증 결과</h3>
-        <p>세 양식 모두 1·2순위 값이 원 단위까지 일치했습니다. 양식 C는 총자산 계정이 따로 없지만, 순자산총액+부채합계가 ‘자산합계’와 정확히 같아 평가가 반영된 값임을 확인했습니다.</p>
-        <div class="st"><span class="pill ok">양식 A 일치</span><span class="pill ok">양식 B 일치</span><span class="pill ok">양식 C 일치</span></div>
+        <p>세 양식 모두 ‘자산’ 계정 당일잔액을 읽습니다. 양식 C는 자산합계가 순자산총액+부채합계와 원 단위까지 같았고, 양식 A·B는 ‘자산’ 잔액이 신탁자산총자산과 달라(평가손익 등) 차이를 함께 표시합니다.</p>
+        <div class="st"><span class="pill ok">양식 A 읽음</span><span class="pill ok">양식 B 읽음</span><span class="pill ok">양식 C 읽음</span></div>
       </div>
     </div>
   </section>
@@ -316,8 +316,8 @@ details.ledgers[open] summary { border-bottom: 1px solid var(--rule) }
         <h3>자동 · 검토 · 미매칭</h3>
         <table>
           <tbody>
-            <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상이면서 2순위 후보와 차이 0.08 이상, 또는 유사도 0.75 이상이면서 2순위와 차이 0.40 이상. 여기에 순자산+부채 검증 통과, 기준일 일치까지 맞으면 기본으로 입력됩니다.</td></tr>
-            <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 검증 불일치, 기준일 상이, 장부가 자산합계 사용 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
+            <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상이면서 2순위 후보와 차이 0.08 이상, 또는 유사도 0.75 이상이면서 2순위와 차이 0.40 이상. 여기에 기준일 일치까지 맞으면 기본으로 입력됩니다.</td></tr>
+            <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 기준일 상이, 자산 계정이 없어 다른 값으로 대신한 경우 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
             <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 화면에서만 유지되며, ‘매핑 내보내기’로 받은 파일을 다음에 ‘매핑 가져오기’로 다시 쓸 수 있습니다.</td></tr>
             <tr><td><span class="pill bad">미매칭</span></td><td>맞는 장부가 없거나 점수가 너무 낮음. PEF·비상장주식처럼 기준가격대장이 없는 종목은 보통 여기에 남습니다.</td></tr>
             <tr><td><span class="pill mute">제외</span></td><td>총자산 칸에 ‘제외’ 같은 글자가 적힌 행(예: MMF). 건드리지 않습니다.</td></tr>
@@ -687,19 +687,22 @@ function computeTotal(L) {
   const f = (k) => L.fields[k]?.v ?? null;
   const total = f("total"), net = f("net"), liab = f("liab"), asset = f("asset");
   const near = (a, b) => Math.abs(a - b) <= 10;
-  if (total != null) {
-    L.value = total; L.method = L.fields.total.label + " 계정";
+  // 1순위: 명세부의 '자산' 계정 당일잔액(차변). 평가 반영 총자산(총자산 계정·순자산+부채)과는 대조만 한다
+  const evalTotal = total != null ? total : (net != null && liab != null ? net + liab : null);
+  const evalLabel = total != null ? L.fields.total.label : "순자산+부채";
+  if (asset != null) {
+    L.value = asset; L.method = L.fields.asset.label + " 당일잔액";
+    if (evalTotal == null) L.check = { s: "mute", t: "대조 값 없음" };
+    else L.check = near(asset, evalTotal) ? { s: "ok", t: `${evalLabel} 값과 일치` } : { s: "mute", t: `${evalLabel} 값과 ${fmt(asset - evalTotal)}원 차이` };
+  } else if (total != null) {
+    L.value = total; L.method = L.fields.total.label + " 계정 (자산 계정 없음)";
     if (net != null && liab != null) L.check = near(total, net + liab) ? { s: "ok", t: "순자산+부채 일치" } : { s: "warn", t: `순자산+부채와 ${fmt(total - net - liab)}원 차이` };
     else L.check = { s: "mute", t: "교차검증 값 없음" };
   } else if (net != null && liab != null) {
-    L.value = net + liab; L.method = `${L.fields.net.label} + ${L.fields.liab.label}`;
-    if (asset != null) L.check = near(asset, L.value) ? { s: "ok", t: "자산합계와 일치" } : { s: "warn", t: "자산합계와 다름(장부가 확인)" };
-    else L.check = { s: "mute", t: "교차검증 값 없음" };
-  } else if (asset != null) {
-    L.value = asset; L.method = L.fields.asset.label + " (장부가일 수 있음)";
-    L.check = { s: "warn", t: "평가 반영 여부 확인" };
+    L.value = net + liab; L.method = `${L.fields.net.label} + ${L.fields.liab.label} (자산 계정 없음)`;
+    L.check = { s: "warn", t: "자산 계정 없음 · 확인" };
   } else {
-    L.value = null; L.method = ""; L.check = { s: "bad", t: "총자산 계정을 찾지 못함" };
+    L.value = null; L.method = ""; L.check = { s: "bad", t: "자산 계정을 찾지 못함" };
   }
 }
 

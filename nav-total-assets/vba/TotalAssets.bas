@@ -1431,14 +1431,31 @@ End Function
 
 ' 총자산 = 신탁재산총자산 계정 → 순자산총액+부채 → 자산합계 순, 순자산+부채로 교차검증
 Private Sub ComputeTotal(ld As Variant, fv() As Double, fpri() As Long, flabel() As String)
-    Dim hasT As Boolean, hasN As Boolean, hasL As Boolean, hasA As Boolean, total As Double
+    Dim hasT As Boolean, hasN As Boolean, hasL As Boolean, hasA As Boolean, total As Double, evLabel As String
     If ld(LD_ERROR) <> "" Then
         ld(LD_VALUE) = Empty: ld(LD_CHECKS) = "bad": ld(LD_CHECKT) = "읽기 실패"
         Exit Sub
     End If
     hasT = fpri(0) >= 0: hasN = fpri(1) >= 0: hasL = fpri(2) >= 0: hasA = fpri(3) >= 0
-    If hasT Then
-        ld(LD_VALUE) = fv(0): ld(LD_METHOD) = flabel(0) & " 계정"
+    ' 1순위: 명세부의 '자산' 계정 당일잔액(차변). 평가 반영 총자산(총자산 계정·순자산+부채)과는 대조만 한다
+    If hasA Then
+        ld(LD_VALUE) = fv(3): ld(LD_METHOD) = flabel(3) & " 당일잔액"
+        If hasT Then
+            total = fv(0): evLabel = flabel(0)
+        ElseIf hasN And hasL Then
+            total = fv(1) + fv(2): evLabel = "순자산+부채"
+        Else
+            evLabel = ""
+        End If
+        If evLabel = "" Then
+            ld(LD_CHECKS) = "mute": ld(LD_CHECKT) = "대조 값 없음"
+        ElseIf Abs(fv(3) - total) <= 10 Then
+            ld(LD_CHECKS) = "ok": ld(LD_CHECKT) = evLabel & " 값과 일치"
+        Else
+            ld(LD_CHECKS) = "mute": ld(LD_CHECKT) = evLabel & " 값과 " & FmtWon(fv(3) - total) & "원 차이"
+        End If
+    ElseIf hasT Then
+        ld(LD_VALUE) = fv(0): ld(LD_METHOD) = flabel(0) & " 계정 (자산 계정 없음)"
         If hasN And hasL Then
             If Abs(fv(0) - (fv(1) + fv(2))) <= 10 Then
                 ld(LD_CHECKS) = "ok": ld(LD_CHECKT) = "순자산+부채 일치"
@@ -1450,21 +1467,10 @@ Private Sub ComputeTotal(ld As Variant, fv() As Double, fpri() As Long, flabel()
         End If
     ElseIf hasN And hasL Then
         total = fv(1) + fv(2)
-        ld(LD_VALUE) = total: ld(LD_METHOD) = flabel(1) & " + " & flabel(2)
-        If hasA Then
-            If Abs(fv(3) - total) <= 10 Then
-                ld(LD_CHECKS) = "ok": ld(LD_CHECKT) = "자산합계와 일치"
-            Else
-                ld(LD_CHECKS) = "warn": ld(LD_CHECKT) = "자산합계와 다름(장부가 확인)"
-            End If
-        Else
-            ld(LD_CHECKS) = "mute": ld(LD_CHECKT) = "교차검증 값 없음"
-        End If
-    ElseIf hasA Then
-        ld(LD_VALUE) = fv(3): ld(LD_METHOD) = flabel(3) & " (장부가일 수 있음)"
-        ld(LD_CHECKS) = "warn": ld(LD_CHECKT) = "평가 반영 여부 확인"
+        ld(LD_VALUE) = total: ld(LD_METHOD) = flabel(1) & " + " & flabel(2) & " (자산 계정 없음)"
+        ld(LD_CHECKS) = "warn": ld(LD_CHECKT) = "자산 계정 없음 · 확인"
     Else
-        ld(LD_VALUE) = Empty: ld(LD_METHOD) = "": ld(LD_CHECKS) = "bad": ld(LD_CHECKT) = "총자산 계정을 찾지 못함"
+        ld(LD_VALUE) = Empty: ld(LD_METHOD) = "": ld(LD_CHECKS) = "bad": ld(LD_CHECKT) = "자산 계정을 찾지 못함"
     End If
 End Sub
 

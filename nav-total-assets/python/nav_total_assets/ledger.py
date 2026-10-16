@@ -443,28 +443,30 @@ def _fmt(n):
 
 
 def compute_total(L: Ledger):
-    """총자산 = 신탁재산총자산 계정 → 순자산총액+부채 → 자산합계 순, 순자산+부채로 교차검증"""
+    """총자산 = 명세부 '자산' 계정 당일잔액(차변). 없으면 신탁재산총자산 계정 → 순자산총액+부채(검토) 순"""
     if L.error:
         L.value, L.check = None, ("bad", "읽기 실패")
         return
     f = lambda k: (L.fields.get(k) or {}).get("v")
     total, net, liab, asset = f("total"), f("net"), f("liab"), f("asset")
     near = lambda a, b: abs(a - b) <= 10
-    if total is not None:
-        L.value, L.method = total, L.fields["total"]["label"] + " 계정"
+    eval_total = total if total is not None else (net + liab if net is not None and liab is not None else None)
+    eval_label = L.fields["total"]["label"] if total is not None else "순자산+부채"
+    if asset is not None:
+        L.value, L.method = asset, L.fields["asset"]["label"] + " 당일잔액"
+        if eval_total is None:
+            L.check = ("mute", "대조 값 없음")
+        else:
+            L.check = ("ok", f"{eval_label} 값과 일치") if near(asset, eval_total) else ("mute", f"{eval_label} 값과 {_fmt(asset - eval_total)}원 차이")
+    elif total is not None:
+        L.value, L.method = total, L.fields["total"]["label"] + " 계정 (자산 계정 없음)"
         if net is not None and liab is not None:
             L.check = ("ok", "순자산+부채 일치") if near(total, net + liab) else ("warn", f"순자산+부채와 {_fmt(total - net - liab)}원 차이")
         else:
             L.check = ("mute", "교차검증 값 없음")
     elif net is not None and liab is not None:
         L.value = net + liab
-        L.method = f"{L.fields['net']['label']} + {L.fields['liab']['label']}"
-        if asset is not None:
-            L.check = ("ok", "자산합계와 일치") if near(asset, L.value) else ("warn", "자산합계와 다름(장부가 확인)")
-        else:
-            L.check = ("mute", "교차검증 값 없음")
-    elif asset is not None:
-        L.value, L.method = asset, L.fields["asset"]["label"] + " (장부가일 수 있음)"
-        L.check = ("warn", "평가 반영 여부 확인")
+        L.method = f"{L.fields['net']['label']} + {L.fields['liab']['label']} (자산 계정 없음)"
+        L.check = ("warn", "자산 계정 없음 · 확인")
     else:
-        L.value, L.method, L.check = None, "", ("bad", "총자산 계정을 찾지 못함")
+        L.value, L.method, L.check = None, "", ("bad", "자산 계정을 찾지 못함")

@@ -19,13 +19,13 @@ def test_synthetic_end_to_end(tmp_path):
         r = by_name[name]
         assert r.status == "auto" and r.include, (name, r.status, r.notes)
         assert round(r.ledger.value) == value
-        assert r.ledger.check[0] == "ok"
+        assert r.ledger.method.endswith("당일잔액")
     assert by_name["예시법인용MMF 1(국공채)C"].status == "skip"
     assert by_name["가온대체투자전문투자형사모부동산투자신탁102호"].status == "nomatch"  # 101호 장부에 붙으면 안 된다
     out = tmp_path / "out.xlsx"
     assert save_workbook(target, results, out) == 2
     ws = openpyxl.load_workbook(out).worksheets[0]
-    assert ws["D2"].value == 5_000_000_000 and ws["D3"].value == 21_000_000_000
+    assert ws["D2"].value == 5_100_000_000 and ws["D3"].value == 21_000_000_000
     assert ws["D4"].value is None and ws["D5"].value == "제외"
     with zipfile.ZipFile(d / "대상.xlsx") as a, zipfile.ZipFile(out) as b:
         assert a.namelist() == b.namelist()
