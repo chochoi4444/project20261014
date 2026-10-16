@@ -1797,7 +1797,7 @@ Public Sub RunTotalAssets()
     nF = ListLedgerFiles(ledgerDir, files, targetPath)
     If nF = 0 Then
         wbT.Close SaveChanges:=False
-        Err.Raise vbObjectError + 2, , "폴더에 엑셀 파일(.xlsx .xls .xlsm .csv)이 없습니다." & vbCrLf & ledgerDir
+        Err.Raise vbObjectError + 2, , "폴더에 엑셀 파일(.xlsx .xls .xlsm .xlsb .csv)이 없습니다." & vbCrLf & ledgerDir
     End If
     ReDim lds(nF - 1)
     Application.AutomationSecurity = 3
@@ -1958,7 +1958,7 @@ Private Function ListLedgerFiles(ByVal root As String, ByRef files() As String, 
                     ReDim Preserve subs(ns): subs(ns) = d & f: ns = ns + 1
                 Else
                     lower = LCase$(f)
-                    If (lower Like "*.xlsx" Or lower Like "*.xlsm" Or lower Like "*.xls" Or lower Like "*.csv") _
+                    If (lower Like "*.xlsx" Or lower Like "*.xlsm" Or lower Like "*.xlsb" Or lower Like "*.xls" Or lower Like "*.csv") _
                        And Left$(f, 2) <> "~$" And InStr(f, "_총자산입력") = 0 And InStr(f, "_매칭결과") = 0 _
                        And LCase$(d & f) <> LCase$(targetPath) And LCase$(d & f) <> LCase$(ThisWorkbook.FullName) Then
                         ReDim Preserve files(n): files(n) = d & f: n = n + 1
