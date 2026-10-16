@@ -27,10 +27,12 @@ def make(out: Path):
         ["", "누리파트너스전문투자형사모부동산투자신탁유럽제1호", "기타수익증권", None, "KRZ000000002"],
         ["", "가온대체투자전문투자형사모부동산투자신탁102호", "기타수익증권", None, "KRZ000000003"],
         ["", "예시법인용MMF 1(국공채)C", "MMF", "제외", "KRZ000000004"],
+        ["", "보람에너지풍력사모특별자산투자신탁", "주식형", None, "KRZ000000005"],
+        ["", "보람에너지태양광사모특별자산투자신탁", "주식형", None, "KRZ000000006"],
     ]
     for r in rows:
         ws.append(r)
-    for r in range(2, 6):
+    for r in range(2, 8):
         ws.cell(r, 4).number_format = "#,##0"
     dv = DataValidation(type="list", formula1='"A,B"')
     ws.add_data_validation(dv)
@@ -60,6 +62,26 @@ def make(out: Path):
     ws.append([None, None, None, None, None, "200000", "부채합계", None, None, 400_000_000, None, 100_000, None, 400_100_000])
     ws.append([None, None, None, None, None, "700001", "순자산총액", None, None, 20_600_000_000, None, -100_000, None, 20_599_900_000])
     wb.save(ledgers / "누리해외부동산1호_신탁재산명세부_260930.xlsx")
+
+    # 통합 파일: 요약 시트 + 펀드마다 '총계정원장_' 시트. 머리글은 '금일잔액', 펀드명은 '펀드 :' 칸 뒤 코드·이름
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "마감자료"
+    ws.append(["구분", "보람에너지풍력", "보람에너지태양광"])
+    ws.append(["NAV", 2_990_000_000, 1_495_000_000])
+    for sheet, code, name, asset, liab in [("총계정원장_풍력", 10107, "보람에너지풍력발전사모특별자산투자신탁[인프라사업]", 3_000_000_000, 10_000_000),
+                                           ("총계정원장_태양광", 10111, "보람에너지태양광사모특별자산투자신탁[인프라사업]", 1_500_000_000, 5_000_000)]:
+        ws = wb.create_sheet(sheet)
+        ws.append([None, None, None, "총 계 정 원 장"])
+        ws.append([None, None, None, "기준일 : 2026.09.30 (일반)"])
+        ws.append(["펀드 :", code, name, None, None, None, None, "보람자산운용"])
+        ws.append([])
+        ws.append(["차변", None, None, "계정명", "계정코드", "대변"])
+        ws.append(["금일잔액", "금일증감", "전일잔액", None, None, "전일잔액", "금일증감", "금일잔액"])
+        ws.append([asset, 0, asset, "[자산]", "1000000"])
+        ws.append([None, None, None, "[부채]", "2000000", liab, 0, liab])
+        ws.append([None, None, None, "순자산총액", "9011100", asset - liab, 0, asset - liab])
+    wb.save(ledgers / "02. 보람에너지 마감자료_260930.xlsx")
 
     expected = {"가온대체투자전문투자형사모부동산투자신탁101호": 5_100_000_000,
                 "누리파트너스전문투자형사모부동산투자신탁유럽제1호": 21_000_000_000}

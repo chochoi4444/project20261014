@@ -98,13 +98,14 @@ def clean_file_name(name: str) -> str:
     t = re.sub(r"(?<!\d)(20\d{2})\s*[.\-_/]\s*(\d{1,2})\s*[.\-_/]\s*(\d{1,2})(?!\d)",
                lambda m: m[1] + m[2].zfill(2) + m[3].zfill(2), t)
     t = re.sub(r"(?<!\d)(\d{2})[.\-](\d{2})[.\-](\d{2})(?!\d)", r"\1\2\3", t)
+    t = re.sub(r"^\s*\d{1,3}\s*[.)]\s*", "", t)  # 앞의 '02.' '3)' 같은 정리 번호
     t = re.sub(r"(\d{6,8})[\s_\-]*(\(\d+\)|_\d)\s*$", r"\1", t)
     t = re.sub(r"\s*\(\d+\)\s*$", "", t)
     t = re.sub(r"20\d{6}|(?<!\d)\d{6}(?!\d)", " ", t)
     t = re.sub(r"(?<![\dA-Za-z])\d{5,}(?![\dA-Za-z])", " ", t)  # 펀드코드
     t = re.sub(r"(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)", " ", t, flags=re.I)
     t = re.sub(r"20\d{2}\s*년", " ", t)
-    t = re.sub(r"기준가격대장|기준가대장|신탁재산명세부|재산명세부|명세부|계정원장|원장|조회|사본|복사본", " ", t)
+    t = re.sub(r"기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본", " ", t)
     return re.sub(r"\s+", " ", re.sub(r"_+", " ", t)).strip()
 
 
@@ -132,6 +133,17 @@ def _rows_from_values(value_rows) -> list[list[Cell]]:
     return [[c for c in (_cell(j, v) for j, v in enumerate(r or [])) if c is not None] for r in value_rows]
 
 
+class Sheets(list):
+    """시트별 행 목록. names에 시트 이름(없으면 빈 문자열)"""
+    names: list = []
+
+
+def _named(sheets, names):
+    out = Sheets(sheets)
+    out.names = list(names)
+    return out
+
+
 def sheets_from_xlsx(path: Path) -> list[list[list[Cell]]]:
     import openpyxl
     import warnings
@@ -139,7 +151,7 @@ def sheets_from_xlsx(path: Path) -> list[list[list[Cell]]]:
         warnings.simplefilter("ignore")
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
-        return [_rows_from_values(ws.iter_rows(values_only=True)) for ws in wb.worksheets]
+        return _named([_rows_from_values(ws.iter_rows(values_only=True)) for ws in wb.worksheets], wb.sheetnames)
     finally:
         wb.close()
 
@@ -166,7 +178,7 @@ def sheets_from_xls(path: Path) -> list[list[list[Cell]]]:
                     vals.append(c.value)
             rows.append(vals)
         out.append(_rows_from_values(rows))
-    return out
+    return _named(out, book.sheet_names())
 
 
 def _decode(raw: bytes) -> str:
@@ -243,9 +255,10 @@ def header_at(row: list[Cell]):
     """'당일잔액'이 있는 차변/대변 머리행"""
     texts = [c for c in row if _is_str(c)]
     joined = "".join(norm_label(c.v) for c in texts)
-    if not (re.search("당일", joined) and re.search("잔액|잔고", joined)):
+    # '당일잔액' 또는 '금일잔액'
+    if not (re.search("당일|금일", joined) and re.search("잔액|잔고", joined)):
         return None
-    dang = [c.c for c in texts if "당일" in norm_label(c.v) and "증감" not in norm_label(c.v)]
+    dang = [c.c for c in texts if re.search("당일|금일", norm_label(c.v)) and "증감" not in norm_label(c.v)]
     if not dang:
         return None
     return {"cols": [c.c for c in row], "left": min(dang), "right": max(dang)}
@@ -322,8 +335,8 @@ def extract_meta(rows: list[list[Cell]], upto: int | None):
                 continue
             raw = nfkc(cell.v).strip()
             tl = re.sub(r"\s", "", raw)
-            if tl.startswith("펀드명"):
-                rest = re.sub(r"^\s*펀\s*드\s*명\s*[:：▶]?\s*", "", raw).strip()
+            if tl.startswith("펀드명") or re.fullmatch(r"펀드[:：]", tl):
+                rest = re.sub(r"^\s*펀\s*드\s*(명\s*)?[:：▶]?\s*", "", raw).strip()
                 if re.search(r"[가-힣A-Za-z]", rest):
                     meta.setdefault("name", rest)
                 else:
@@ -352,6 +365,11 @@ def extract_meta(rows: list[list[Cell]], upto: int | None):
             m = re.search(r"단위[:：]?\(?(천원|백만원|억원|원)", tl)
             if m:
                 meta["unit"] = m[1]
+    # '[10101] 펀드명'처럼 앞에 붙은 펀드코드는 떼어 코드로
+    cm = re.match(r"^[\[(]\s*([A-Za-z0-9\-]+)\s*[\])]\s*(.+)$", meta.get("name") or "")
+    if cm:
+        meta.setdefault("code", cm[1])
+        meta["name"] = cm[2].strip()
     if "date" not in meta:
         for i in range(lim):
             d = next((date_from_text(c.v) for c in rows[i] if _is_str(c) and date_from_text(c.v)), None)
@@ -382,6 +400,7 @@ class Ledger:
     value: float | None = None
     method: str = ""
     check: tuple = ("mute", "")
+    sheet: str | None = None
 
     def as_match_input(self) -> dict:
         return {"id": self.id, "name_cands": self.name_cands, "manager": self.manager,
@@ -402,9 +421,9 @@ def _sheets(path: Path):
     raise ValueError("엑셀로 열 수 없습니다. 암호·DRM이 걸려 있는지 확인하세요.")
 
 
-def parse_ledger(path: Path, lid: int) -> Ledger:
+def parse_ledgers(path: Path, start_id: int) -> list[Ledger]:
+    """장부 파일 하나 → 장부 목록. 보통 1개지만, 시트마다 다른 펀드의 원장이 든 통합 파일은 펀드마다 1개"""
     path = Path(path)
-    L = Ledger(id=lid, path=path, file_name=path.name)
     try:
         try:
             sheets = _sheets(path)
@@ -412,28 +431,61 @@ def parse_ledger(path: Path, lid: int) -> Ledger:
             raise
         except Exception as e:  # 손상·암호·DRM 파일
             raise ValueError(f"파일을 열 수 없습니다 ({type(e).__name__}). 암호·DRM이 걸려 있는지 확인하세요.")
-        best = None
-        for rows in sheets:
+        names = getattr(sheets, "names", None) or [""] * len(sheets)
+        infos = []
+        for name, rows in zip(names, sheets):
             ex = extract_from_rows(rows)
-            meta = extract_meta(rows, ex["header_row"])
-            rank = len(ex["fields"]) + (2 if ex["has_header"] else 0)
-            if best is None or rank > best[0]:
-                best = (rank, ex, meta)
-        if best is None:
+            infos.append({"sheet": name, "ex": ex, "meta": extract_meta(rows, ex["header_row"]),
+                          "rank": len(ex["fields"]) + (2 if ex["has_header"] else 0)})
+        if not infos:
             raise ValueError("내용이 비어 있습니다.")
-        _, ex, meta = best
-        L.meta = meta
-        mult = UNIT_MULT.get(meta.get("unit"), 1)
-        for k, f in ex["fields"].items():
-            L.fields[k] = {**f, "v": f["v"] * mult if k in AMOUNT_FIELDS else f["v"]}
+        picks = _split_funds(infos)
     except ValueError as e:
-        L.error = str(e)
+        L = Ledger(id=start_id, path=path, file_name=path.name, error=str(e))
+        return [_finish(L, None)]
+    out = []
+    for k, p in enumerate(picks):
+        L = Ledger(id=start_id + k, path=path, file_name=path.name, meta=p["meta"])
+        mult = UNIT_MULT.get(p["meta"].get("unit"), 1)
+        for key, f in p["ex"]["fields"].items():
+            L.fields[key] = {**f, "v": f["v"] * mult if key in AMOUNT_FIELDS else f["v"]}
+        out.append(_finish(L, p["sheet"] if len(picks) > 1 else None))
+    return out
+
+
+def parse_ledger(path: Path, lid: int) -> Ledger:
+    """첫 번째 장부만 (예전 호출용)"""
+    return parse_ledgers(path, lid)[0]
+
+
+def _split_funds(infos: list[dict]) -> list[dict]:
+    """펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로, 아니면 가장 내용이 많은 시트 하나"""
+    funds: dict = {}
+    for x in infos:
+        f = x["ex"]["fields"]
+        if not x["ex"]["has_header"] or not x["meta"].get("name") or not ("asset" in f or "total" in f or "net" in f):
+            continue
+        k = norm_name(x["meta"]["name"])
+        if k not in funds or funds[k]["rank"] < x["rank"]:
+            funds[k] = x
+    if len(funds) >= 2:
+        return list(funds.values())
+    best = infos[0]
+    for x in infos:
+        if x["rank"] > best["rank"]:
+            best = x
+    return [best]
+
+
+def _finish(L: Ledger, sheet: str | None) -> Ledger:
+    L.sheet = sheet
     L.name = L.meta.get("name")
-    L.file_title = clean_file_name(path.name)
+    # 통합 파일의 시트 장부는 시트 이름(예: 총계정원장_펀드명)을 파일명 대신 쓴다
+    L.file_title = clean_file_name(sheet + ".x" if sheet else L.file_name)
     L.name_cands = [x for x in (L.name, L.file_title) if x]
     L.manager = L.meta.get("manager", "")
     L.code = L.meta.get("code", "")
-    L.date = L.meta.get("date") or date_from_filename(path.name)
+    L.date = L.meta.get("date") or date_from_filename(L.file_name)
     L.key = norm_name(L.name or L.file_title)
     compute_total(L)
     return L

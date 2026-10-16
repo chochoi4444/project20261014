@@ -29,7 +29,7 @@ Private Sub Utf8Write(ByVal path As String, ByVal text As String)
 End Sub
 
 ' 엑셀 파일의 모든 시트를 엑셀 UsedRange.Value2처럼 1부터 시작하는 2차원 배열로 읽는다
-Private Function LoadSheets(ByVal path As String, ByRef nS As Long) As Variant
+Private Function LoadSheets(ByVal path As String, ByRef nS As Long, Optional ByRef names As Variant) As Variant
     Dim args(1) As New com.sun.star.beans.PropertyValue, doc As Object, sh As Object, cur As Object, data As Variant
     Dim k As Long, r As Long, c As Long, nr As Long, nc As Long, out() As Variant
     args(0).Name = "Hidden": args(0).Value = True
@@ -37,6 +37,12 @@ Private Function LoadSheets(ByVal path As String, ByRef nS As Long) As Variant
     doc = StarDesktop.loadComponentFromURL(ConvertToURL(path), "_blank", 0, args())
     nS = doc.Sheets.Count
     ReDim out(nS - 1)
+    Dim nm() As String
+    ReDim nm(nS - 1)
+    For k = 0 To nS - 1
+        nm(k) = doc.Sheets.getByIndex(k).Name
+    Next
+    names = nm
     For k = 0 To nS - 1
         sh = doc.Sheets.getByIndex(k)
         cur = sh.createCursor()
@@ -106,16 +112,22 @@ Function Full(ByVal target As String, ByVal dir_ As String, ByVal baseYmd As Str
             If StrComp(files(b), files(a), 0) < 0 Then tmp = files(a): files(a) = files(b): files(b) = tmp
         Next
     Next
-    ReDim lds(nF - 1)
+    Dim nm As Variant, part As Variant, nPart As Long, j As Long, nL As Long
+    ReDim lds(0): nL = 0
     For i = 0 To nF - 1
-        sheets = LoadSheets(dir_ & "/" & files(i), nS)
-        lds(i) = BuildLedger(dir_ & "/" & files(i), files(i), sheets, nS, "")
+        sheets = LoadSheets(dir_ & "/" & files(i), nS, nm)
+        part = BuildLedgers(dir_ & "/" & files(i), files(i), sheets, nS, "", nm, nPart)
+        For j = 0 To nPart - 1
+            ReDim Preserve lds(nL)
+            lds(nL) = part(j)
+            nL = nL + 1
+        Next
     Next
-    ComputeResults lds, nF, baseYmd, False, False, Nothing
+    ComputeResults lds, nL, baseYmd, False, False, Nothing
     txt = "B" & Chr(9) & baseYmd & Chr(10)
-    For i = 0 To nF - 1
+    For i = 0 To nL - 1
         ld = lds(i)
-        txt = txt & "L" & Chr(9) & ld(0) & Chr(9) & ld(1) & Chr(9) & ld(2) & Chr(9) & ld(3) & Chr(9) & ld(4) & Chr(9) & ld(5) & Chr(9) & ValText(ld(8)) & Chr(9) & ld(9) & Chr(9) & ld(11) & Chr(10)
+        txt = txt & "L" & Chr(9) & ld(0) & Chr(9) & ld(1) & Chr(9) & ld(2) & Chr(9) & ld(3) & Chr(9) & ld(4) & Chr(9) & ld(5) & Chr(9) & ValText(ld(8)) & Chr(9) & ld(9) & Chr(9) & ld(11) & Chr(9) & ld(18) & Chr(10)
     Next
     For i = 0 To tCount - 1
         txt = txt & "R" & Chr(9) & tRow(i) & Chr(9) & rStatus(i) & Chr(9) & IIf(rInc(i), "Y", "") & Chr(9) & Fmt6(rScore(i)) & Chr(9)

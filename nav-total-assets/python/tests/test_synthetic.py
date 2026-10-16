@@ -20,10 +20,16 @@ def test_synthetic_end_to_end(tmp_path):
         assert r.status == "auto" and r.include, (name, r.status, r.notes)
         assert round(r.ledger.value) == value
         assert r.ledger.method.endswith("당일잔액")
+    # 통합 파일 하나에서 펀드 2개를 시트별로 읽는다
+    for name, value, sheet in [("보람에너지풍력사모특별자산투자신탁", 3_000_000_000, "총계정원장_풍력"),
+                               ("보람에너지태양광사모특별자산투자신탁", 1_500_000_000, "총계정원장_태양광")]:
+        r = by_name[name]
+        assert r.ledger and r.ledger.sheet == sheet and round(r.ledger.value) == value, (name, r.status, r.notes)
+        assert r.status in ("auto", "review")
     assert by_name["예시법인용MMF 1(국공채)C"].status == "skip"
     assert by_name["가온대체투자전문투자형사모부동산투자신탁102호"].status == "nomatch"  # 101호 장부에 붙으면 안 된다
     out = tmp_path / "out.xlsx"
-    assert save_workbook(target, results, out) == 2
+    assert save_workbook(target, results, out) == sum(r.include for r in results) >= 2
     ws = openpyxl.load_workbook(out).worksheets[0]
     assert ws["D2"].value == 5_100_000_000 and ws["D3"].value == 21_000_000_000
     assert ws["D4"].value is None and ws["D5"].value == "제외"

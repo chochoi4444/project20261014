@@ -50,7 +50,8 @@ Private Const LD_NAV As Long = 14
 Private Const LD_PATH As Long = 15
 Private Const LD_CANDS As Long = 16
 Private Const LD_NCANDS As Long = 17
-Private Const LD_SIZE As Long = 18
+Private Const LD_SHEET As Long = 18
+Private Const LD_SIZE As Long = 19
 
 ' ---------- 매칭 결과 (MatchNames가 채움) ----------
 Public mScores() As Double
@@ -976,6 +977,8 @@ Public Function CleanFileName(ByVal fileName As String) As String
     p = InStrRev(t, ".")
     If p > 0 And p < Len(t) Then t = Left$(t, p - 1)
     t = CompactDates(t)
+    ' 앞의 '02.' '3)' 같은 정리 번호는 호수가 아니다
+    t = DropLeadingOrdinal(t)
     ' 날짜 뒤의 '_1', '(1)' 같은 사본 표시
     q = Len(t)
     Do While q > 0
@@ -1067,7 +1070,7 @@ Public Function CleanFileName(ByVal fileName As String) As String
     t = DropFundCodes(out)
     ' '2026년 2분기', '2Q' 같은 분기·연도 표기
     t = RemoveQuarter(t)
-    For Each w In Array("기준가격대장", "기준가대장", "신탁재산명세부", "재산명세부", "명세부", "계정원장", "원장", "조회", "사본", "복사본")
+    For Each w In Array("기준가격대장", "기준가대장", "신탁재산명세부", "통합명세부", "재산명세부", "명세부", "총계정원장", "계정원장", "원장", "마감자료", "조회", "사본", "복사본")
         t = Replace(t, CStr(w), " ")
     Next
     t = Replace(t, "_", " ")
@@ -1075,6 +1078,22 @@ Public Function CleanFileName(ByVal fileName As String) As String
         t = Replace(t, "  ", " ")
     Loop
     CleanFileName = TrimWS(t)
+End Function
+
+Private Function DropLeadingOrdinal(ByVal t As String) As String
+    Dim p As Long, rl As Long, q As Long
+    p = SkipWS(t, 1)
+    rl = DigitRunLen(t, p, 999)
+    If rl >= 1 And rl <= 3 Then
+        q = SkipWS(t, p + rl)
+        If q <= Len(t) Then
+            If Mid$(t, q, 1) = "." Or Mid$(t, q, 1) = ")" Then
+                DropLeadingOrdinal = Mid$(t, SkipWS(t, q + 1))
+                Exit Function
+            End If
+        End If
+    End If
+    DropLeadingOrdinal = t
 End Function
 
 ' 영문자에 붙지 않은 5자리 이상 숫자(펀드코드) → 공백
@@ -1301,11 +1320,12 @@ Private Function HeaderAt(cc As Variant, vv As Variant, ByVal n As Long, ByRef h
     For k = 0 To n - 1
         If IsStrCell(vv(k)) Then joined = joined & NormLabel(vv(k))
     Next
-    If InStr(joined, "당일") = 0 Or (InStr(joined, "잔액") = 0 And InStr(joined, "잔고") = 0) Then Exit Function
+    ' '당일잔액' 또는 '금일잔액'
+    If (InStr(joined, "당일") = 0 And InStr(joined, "금일") = 0) Or (InStr(joined, "잔액") = 0 And InStr(joined, "잔고") = 0) Then Exit Function
     For k = 0 To n - 1
         If IsStrCell(vv(k)) Then
             lab = NormLabel(vv(k))
-            If InStr(lab, "당일") > 0 And InStr(lab, "증감") = 0 Then
+            If (InStr(lab, "당일") > 0 Or InStr(lab, "금일") > 0) And InStr(lab, "증감") = 0 Then
                 If Not found Then
                     hLeft = cc(k): hRight = cc(k): found = True
                 Else
@@ -1437,8 +1457,12 @@ Public Function ExtractMeta(rowsC() As Variant, rowsV() As Variant, rowsN() As L
             If Not IsStrCell(vv(k)) Then GoTo NextCellM
             raw = TrimWS(NormText(vv(k)))
             tl = RemoveWS(raw)
-            If Left$(tl, 3) = "펀드명" Then
-                rest = TrimWS(StripFundLabel(raw))
+            If Left$(tl, 3) = "펀드명" Or tl = "펀드:" Then
+                If tl = "펀드:" Then
+                    rest = ""
+                Else
+                    rest = TrimWS(StripFundLabel(raw))
+                End If
                 If HasLetters(rest) Then
                     If mName = "" Then mName = rest
                 Else
@@ -1511,6 +1535,23 @@ NextRowM:
                 If mDate <> "" Then Exit For
             End If
         Next
+    End If
+    ' '[10101] 펀드명'처럼 앞에 붙은 펀드코드는 떼어 코드로
+    If Len(mName) > 2 Then
+        If Left$(mName, 1) = "[" Or Left$(mName, 1) = "(" Then
+            If Left$(mName, 1) = "[" Then
+                q = InStr(2, mName, "]")
+            Else
+                q = InStr(2, mName, ")")
+            End If
+            If q > 2 Then
+                rest = TrimWS(Mid$(mName, 2, q - 2))
+                If IsCodeChars(rest) And TrimWS(Mid$(mName, q + 1)) <> "" Then
+                    If mCode = "" Then mCode = rest
+                    mName = TrimWS(Mid$(mName, q + 1))
+                End If
+            End If
+        End If
     End If
     ExtractMeta = Array(mName, mCode, mDate, mMgr, mUnit)
 End Function
@@ -1599,45 +1640,120 @@ End Sub
 
 ' 시트 값 배열들(sheets(0..nSheets-1))로 장부 레코드를 만든다. errMsg가 있으면 읽기 실패 장부
 Public Function BuildLedger(ByVal path As String, ByVal fileName As String, sheets As Variant, ByVal nSheets As Long, ByVal errMsg As String) As Variant
-    Dim ld As Variant, s As Long, rowsC() As Variant, rowsV() As Variant, rowsN() As Long, nRows As Long
+    Dim res As Variant, n As Long, noNames() As String
+    ReDim noNames(0)
+    res = BuildLedgers(path, fileName, sheets, nSheets, errMsg, noNames, n)
+    BuildLedger = res(0)
+End Function
+
+' 장부 파일 하나 → 장부 목록(nOut개). 보통 1개지만, 시트마다 다른 펀드의 원장이 든 통합 파일은 펀드마다 1개
+Public Function BuildLedgers(ByVal path As String, ByVal fileName As String, sheets As Variant, ByVal nSheets As Long, ByVal errMsg As String, sheetNames As Variant, ByRef nOut As Long) As Variant
+    Dim s As Long, rowsC() As Variant, rowsV() As Variant, rowsN() As Long, nRows As Long
     Dim fv() As Double, fpri() As Long, flabel() As String, headerRow As Long, hasHeader As Boolean, meta As Variant, rank As Long, f As Long, lim As Long
-    Dim bestRank As Long, bfv() As Double, bfpri() As Long, bflabel() As String, bmeta As Variant, haveBest As Boolean, mult As Double
+    Dim sFv() As Variant, sPri() As Variant, sLab() As Variant, sMeta() As Variant, sRank() As Long, sHdr() As Boolean, sName() As String
+    Dim out() As Variant, emptyFv() As Double, emptyPri() As Long, emptyLab() As String
+    nOut = 0
+    If errMsg = "" And nSheets = 0 Then errMsg = "내용이 비어 있습니다."
+    If errMsg <> "" Then
+        ReDim emptyFv(5): ReDim emptyPri(5): ReDim emptyLab(5)
+        For f = 0 To 5
+            emptyPri(f) = -1
+        Next
+        ReDim out(0)
+        out(0) = MakeLedger(path, fileName, "", emptyFv, emptyPri, emptyLab, Array("", "", "", "", ""), errMsg)
+        nOut = 1
+        BuildLedgers = out
+        Exit Function
+    End If
+    ReDim sFv(nSheets - 1): ReDim sPri(nSheets - 1): ReDim sLab(nSheets - 1): ReDim sMeta(nSheets - 1)
+    ReDim sRank(nSheets - 1): ReDim sHdr(nSheets - 1): ReDim sName(nSheets - 1)
+    For s = 0 To nSheets - 1
+        ToRows sheets(s), rowsC, rowsV, rowsN, nRows
+        ExtractFields rowsC, rowsV, rowsN, nRows, fv, fpri, flabel, headerRow, hasHeader
+        If hasHeader Then
+            lim = headerRow - 1
+        Else
+            lim = 15
+        End If
+        meta = ExtractMeta(rowsC, rowsV, rowsN, nRows, lim)
+        rank = 0
+        For f = 0 To 5
+            If fpri(f) >= 0 Then rank = rank + 1
+        Next
+        If hasHeader Then rank = rank + 2
+        sFv(s) = CopyDoubles(fv): sPri(s) = CopyLongs(fpri, 6): sLab(s) = CopyStrings(flabel)
+        sMeta(s) = meta: sRank(s) = rank: sHdr(s) = hasHeader
+        sName(s) = ""
+        If IsArray(sheetNames) Then
+            If s <= UBound(sheetNames) Then sName(s) = CStr(sheetNames(s))
+        End If
+    Next
+    ' 펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로
+    Dim fKey() As String, fIdx() As Long, nF As Long, k As Long, key As String, hit As Long, pv As Variant
+    ReDim fKey(nSheets - 1): ReDim fIdx(nSheets - 1): nF = 0
+    For s = 0 To nSheets - 1
+        pv = sPri(s)
+        If sHdr(s) And sMeta(s)(0) <> "" And (pv(3) >= 0 Or pv(0) >= 0 Or pv(1) >= 0) Then
+            key = NormName(sMeta(s)(0))
+            hit = -1
+            For k = 0 To nF - 1
+                If fKey(k) = key Then hit = k: Exit For
+            Next
+            If hit < 0 Then
+                fKey(nF) = key: fIdx(nF) = s: nF = nF + 1
+            ElseIf sRank(fIdx(hit)) < sRank(s) Then
+                fIdx(hit) = s
+            End If
+        End If
+    Next
+    If nF >= 2 Then
+        ReDim out(nF - 1)
+        For k = 0 To nF - 1
+            s = fIdx(k)
+            out(k) = MakeLedger(path, fileName, sName(s), sFv(s), sPri(s), sLab(s), sMeta(s), "")
+        Next
+        nOut = nF
+    Else
+        hit = 0
+        For s = 1 To nSheets - 1
+            If sRank(s) > sRank(hit) Then hit = s
+        Next
+        ReDim out(0)
+        out(0) = MakeLedger(path, fileName, "", sFv(hit), sPri(hit), sLab(hit), sMeta(hit), "")
+        nOut = 1
+    End If
+    BuildLedgers = out
+End Function
+
+Private Function CopyDoubles(src() As Double) As Variant
+    Dim r() As Double, i As Long
+    ReDim r(UBound(src))
+    For i = 0 To UBound(src)
+        r(i) = src(i)
+    Next
+    CopyDoubles = r
+End Function
+
+Private Function CopyStrings(src() As String) As Variant
+    Dim r() As String, i As Long
+    ReDim r(UBound(src))
+    For i = 0 To UBound(src)
+        r(i) = src(i)
+    Next
+    CopyStrings = r
+End Function
+
+' 시트 하나의 추출 결과로 장부 레코드를 만든다. sheetName이 있으면 통합 파일의 시트 장부
+Private Function MakeLedger(ByVal path As String, ByVal fileName As String, ByVal sheetName As String, fvIn As Variant, priIn As Variant, labIn As Variant, bmeta As Variant, ByVal errMsg As String) As Variant
+    Dim ld As Variant, f As Long, mult As Double, bfv() As Double, bfpri() As Long, bflabel() As String
     ReDim ld(LD_SIZE - 1)
-    ld(LD_FILE) = fileName: ld(LD_PATH) = path: ld(LD_ERROR) = errMsg
-    ld(LD_NAME) = "": ld(LD_MANAGER) = "": ld(LD_CODE) = "": ld(LD_DATE) = "": ld(LD_METHOD) = ""
-    ld(LD_VALUE) = Empty: ld(LD_NET) = Empty: ld(LD_LIAB) = Empty: ld(LD_NAV) = Empty
     ReDim bfv(5): ReDim bfpri(5): ReDim bflabel(5)
     For f = 0 To 5
-        bfpri(f) = -1
+        bfv(f) = fvIn(f): bfpri(f) = priIn(f): bflabel(f) = labIn(f)
     Next
-    bmeta = Array("", "", "", "", "")
-    If errMsg = "" Then
-        For s = 0 To nSheets - 1
-            ToRows sheets(s), rowsC, rowsV, rowsN, nRows
-            If True Then
-                ExtractFields rowsC, rowsV, rowsN, nRows, fv, fpri, flabel, headerRow, hasHeader
-                If hasHeader Then
-                    lim = headerRow - 1
-                Else
-                    lim = 15
-                End If
-                meta = ExtractMeta(rowsC, rowsV, rowsN, nRows, lim)
-                rank = 0
-                For f = 0 To 5
-                    If fpri(f) >= 0 Then rank = rank + 1
-                Next
-                If hasHeader Then rank = rank + 2
-                If Not haveBest Or rank > bestRank Then
-                    haveBest = True: bestRank = rank
-                    For f = 0 To 5
-                        bfv(f) = fv(f): bfpri(f) = fpri(f): bflabel(f) = flabel(f)
-                    Next
-                    bmeta = meta
-                End If
-            End If
-        Next
-        If Not haveBest Then ld(LD_ERROR) = "내용이 비어 있습니다."
-    End If
+    ld(LD_FILE) = fileName: ld(LD_PATH) = path: ld(LD_ERROR) = errMsg: ld(LD_SHEET) = sheetName
+    ld(LD_NAME) = "": ld(LD_MANAGER) = "": ld(LD_CODE) = "": ld(LD_DATE) = "": ld(LD_METHOD) = ""
+    ld(LD_VALUE) = Empty: ld(LD_NET) = Empty: ld(LD_LIAB) = Empty: ld(LD_NAV) = Empty
     Select Case bmeta(4)
         Case "천원": mult = 1000#
         Case "백만원": mult = 1000000#
@@ -1648,7 +1764,12 @@ Public Function BuildLedger(ByVal path As String, ByVal fileName As String, shee
         bfv(f) = bfv(f) * mult
     Next
     ld(LD_NAME) = bmeta(0): ld(LD_CODE) = bmeta(1): ld(LD_MANAGER) = bmeta(3)
-    ld(LD_TITLE) = CleanFileName(fileName)
+    ' 통합 파일의 시트 장부는 시트 이름(예: 총계정원장_펀드명)을 파일명 대신 쓴다
+    If sheetName <> "" Then
+        ld(LD_TITLE) = CleanFileName(sheetName & ".x")
+    Else
+        ld(LD_TITLE) = CleanFileName(fileName)
+    End If
     Dim cands() As String, nc As Long
     ReDim cands(1): nc = 0
     If ld(LD_NAME) <> "" Then cands(nc) = ld(LD_NAME): nc = nc + 1
@@ -1665,7 +1786,7 @@ Public Function BuildLedger(ByVal path As String, ByVal fileName As String, shee
     If bfpri(2) >= 0 Then ld(LD_LIAB) = bfv(2)
     If bfpri(4) >= 0 Then ld(LD_NAV) = bfv(4)
     ComputeTotal ld, bfv, bfpri, bflabel
-    BuildLedger = ld
+    MakeLedger = ld
 End Function
 
 ' ======================================================================
@@ -1878,6 +1999,14 @@ Private Function ResolveForced(v As Variant, lds() As Variant, ByVal nL As Long)
     Next
 End Function
 
+Private Function LedgerFileLabel(ld As Variant) As String
+    If ld(LD_SHEET) <> "" Then
+        LedgerFileLabel = ld(LD_FILE) & " [" & ld(LD_SHEET) & "]"
+    Else
+        LedgerFileLabel = ld(LD_FILE)
+    End If
+End Function
+
 Private Function FileStem(ByVal f As String) As String
     Dim p As Long
     p = InStrRev(f, ".")
@@ -1943,6 +2072,7 @@ Public Sub RunTotalAssets()
     Dim prevCalc As Long, prevSec As Long, includeReview As Boolean, mapping As Collection, common As String, nMis As Long
     Dim firstRow As Long, firstCol As Long, nInc As Long, nReview As Long, outPath As String, reportPath As String, msg As String
     Dim folder As String, stem As String, ext As String, p As Long, wsT As Object
+    Dim sheetNames As Variant, part As Variant, nPart As Long, k As Long
 
     targetPath = PickPath(False, "총자산을 채울 대상 엑셀을 고르세요")
     If targetPath = "" Then Exit Sub
@@ -1984,15 +2114,20 @@ Public Sub RunTotalAssets()
         wbT.Close SaveChanges:=False
         Err.Raise vbObjectError + 2, , "폴더에 엑셀 파일(.xlsx .xls .xlsm .xlsb .csv)이 없습니다." & vbCrLf & ledgerDir
     End If
-    ReDim lds(nF - 1)
+    ReDim lds(0)
+    nL = 0
     Application.AutomationSecurity = 3
     For i = 0 To nF - 1
         Application.StatusBar = "기준가격대장 읽는 중… " & (i + 1) & "/" & nF
         DoEvents
-        errMsg = ReadWorkbookSheets(files(i), sheets, nS)
-        lds(i) = BuildLedger(files(i), FileNameOf(files(i)), sheets, nS, errMsg)
+        errMsg = ReadWorkbookSheets(files(i), sheets, nS, sheetNames)
+        part = BuildLedgers(files(i), FileNameOf(files(i)), sheets, nS, errMsg, sheetNames, nPart)
+        For k = 0 To nPart - 1
+            ReDim Preserve lds(nL)
+            lds(nL) = part(k)
+            nL = nL + 1
+        Next
     Next
-    nL = nF
     Application.AutomationSecurity = prevSec
     Application.StatusBar = False
 
@@ -2160,8 +2295,8 @@ Private Function ListLedgerFiles(ByVal root As String, ByRef files() As String, 
 End Function
 
 ' 장부 파일의 모든 시트 값을 읽는다. 실패하면 오류 문구를 돌려준다
-Private Function ReadWorkbookSheets(ByVal path As String, ByRef sheets As Variant, ByRef nS As Long) As String
-    Dim wb As Object, ws As Object, arr() As Variant, k As Long, wasOpen As Boolean
+Private Function ReadWorkbookSheets(ByVal path As String, ByRef sheets As Variant, ByRef nS As Long, ByRef names As Variant) As String
+    Dim wb As Object, ws As Object, arr() As Variant, nm() As String, k As Long, wasOpen As Boolean
     nS = 0
     On Error GoTo Bad
     ' 이미 열어 둔 장부는 그대로 읽고 닫지 않는다
@@ -2171,13 +2306,15 @@ Private Function ReadWorkbookSheets(ByVal path As String, ByRef sheets As Varian
         Set wb = Workbooks.Open(Filename:=path, UpdateLinks:=0, ReadOnly:=True, IgnoreReadOnlyRecommended:=True, _
                                 Notify:=False, AddToMru:=False, Password:="__no_password__")
     End If
-    ReDim arr(wb.Worksheets.Count - 1)
+    ReDim arr(wb.Worksheets.Count - 1): ReDim nm(wb.Worksheets.Count - 1)
     For Each ws In wb.Worksheets
         arr(k) = SheetValues(ws)
+        nm(k) = ws.Name
         k = k + 1
     Next
     If Not wasOpen Then wb.Close SaveChanges:=False
     sheets = arr
+    names = nm
     nS = k
     ReadWorkbookSheets = ""
     Exit Function
@@ -2257,7 +2394,7 @@ Private Sub WriteReport(ByVal path As String, lds() As Variant, ByVal nL As Long
         data(r, 7) = rWhy(i): data(r, 13) = rNotes(i)
         If rLed(i) >= 0 Then
             ld = lds(rLed(i))
-            data(r, 8) = ld(LD_FILE)
+            data(r, 8) = LedgerFileLabel(ld)
             data(r, 9) = IIf(ld(LD_NAME) <> "", ld(LD_NAME), ld(LD_TITLE))
             data(r, 10) = ld(LD_DATE)
             If Not IsEmpty(ld(LD_VALUE)) Then data(r, 11) = Int(CDbl(ld(LD_VALUE)) + 0.5)
@@ -2285,7 +2422,7 @@ Private Sub WriteReport(ByVal path As String, lds() As Variant, ByVal nL As Long
     data(0, 6) = "순자산": data(0, 7) = "부채": data(0, 8) = "산출 근거": data(0, 9) = "검증 / 오류"
     For l = 0 To nL - 1
         ld = lds(l)
-        data(l + 1, 1) = ld(LD_FILE)
+        data(l + 1, 1) = LedgerFileLabel(ld)
         data(l + 1, 2) = IIf(ld(LD_NAME) <> "", ld(LD_NAME), ld(LD_TITLE))
         data(l + 1, 3) = ld(LD_MANAGER): data(l + 1, 4) = ld(LD_DATE)
         If Not IsEmpty(ld(LD_VALUE)) Then data(l + 1, 5) = Int(CDbl(ld(LD_VALUE)) + 0.5)

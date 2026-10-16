@@ -134,7 +134,7 @@ def full(target, ledgers, base):
     py_led = sorted(lds, key=lambda l: l.file_name)
     for v, l in zip(vb_led, py_led):
         pv = "" if l.value is None else str(round(l.value))
-        exp = [l.file_name, l.name or "", l.file_title, l.manager, l.code, l.date or "", pv, l.method, l.check[1]]
+        exp = [l.file_name, l.name or "", l.file_title, l.manager, l.code, l.date or "", pv, l.method, l.check[1], l.sheet or ""]
         if v[1:] != exp:
             bad += 1
             print("  장부 다름:\n    매크로", v[1:], "\n    파이썬", exp)

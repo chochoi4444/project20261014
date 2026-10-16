@@ -569,11 +569,13 @@ function cleanFileName(name) {
   // '2026.09.30', '2026-9-30', '2026_09_30', '26.09.30' 같은 날짜를 붙여 쓴 숫자로 바꿔 아래에서 함께 지운다
   t = t.replace(/(?<!\d)(20\d{2})\s*[.\-_/]\s*(\d{1,2})\s*[.\-_/]\s*(\d{1,2})(?!\d)/g, (m, y, mo, d) => y + mo.padStart(2, "0") + d.padStart(2, "0"))
        .replace(/(?<!\d)(\d{2})[.\-](\d{2})[.\-](\d{2})(?!\d)/g, "$1$2$3");
+  // 앞의 '02.' '3)' 같은 정리 번호는 호수가 아니다
+  t = t.replace(/^\s*\d{1,3}\s*[.)]\s*/, "");
   t = t.replace(/(\d{6,8})[\s_\-]*(\(\d+\)|_\d)\s*$/, "$1").replace(/\s*\(\d+\)\s*$/, "");
   // 날짜(6·8자리)와 펀드코드(5자리 이상 숫자)는 펀드명이 아니므로 지운다
   t = t.replace(/20\d{6}|(?<!\d)\d{6}(?!\d)/g, " ").replace(/(?<![\dA-Za-z])\d{5,}(?![\dA-Za-z])/g, " ");
   t = t.replace(/(20\d{2}\s*년?\s*)?[1-4]\s*(Q|분기)/gi, " ").replace(/20\d{2}\s*년/g, " ");
-  t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|재산명세부|명세부|계정원장|원장|조회|사본|복사본/g, " ");
+  t = t.replace(/기준가격대장|기준가대장|신탁재산명세부|통합명세부|재산명세부|명세부|총계정원장|계정원장|원장|마감자료|조회|사본|복사본/g, " ");
   return t.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
@@ -600,8 +602,9 @@ const AMOUNT_FIELDS = ["total", "net", "liab", "asset"];
 function headerAt(row) {
   const texts = row.filter((c) => typeof c.v === "string");
   const joined = texts.map((c) => normLabel(c.v)).join("");
-  if (!(/당일/.test(joined) && /(잔액|잔고)/.test(joined))) return null;
-  const dang = texts.filter((c) => /당일/.test(normLabel(c.v)) && !/증감/.test(normLabel(c.v))).map((c) => c.c);
+  // '당일잔액' 또는 '금일잔액'
+  if (!(/(당일|금일)/.test(joined) && /(잔액|잔고)/.test(joined))) return null;
+  const dang = texts.filter((c) => /(당일|금일)/.test(normLabel(c.v)) && !/증감/.test(normLabel(c.v))).map((c) => c.c);
   if (!dang.length) return null;
   return { cols: row.map((c) => c.c), left: Math.min(...dang), right: Math.max(...dang) };
 }
@@ -659,8 +662,8 @@ function extractMeta(rows, upto) {
     row.forEach((cell, k) => {
       if (typeof cell.v !== "string") return;
       const raw = nfkc(cell.v).trim(), tl = raw.replace(/\s/g, "");
-      if (/^펀드명/.test(tl)) {
-        const rest = raw.replace(/^\s*펀\s*드\s*명\s*[:：▶]?\s*/, "").trim();
+      if (/^펀드명|^펀드[:：]$/.test(tl)) {
+        const rest = raw.replace(/^\s*펀\s*드\s*(명\s*)?[:：▶]?\s*/, "").trim();
         if (/[가-힣A-Za-z]/.test(rest)) meta.name ??= rest;
         else for (const c of row.slice(k + 1)) {
           if (typeof c.v === "number") meta.code ??= String(c.v);
@@ -680,6 +683,9 @@ function extractMeta(rows, upto) {
       if (m) meta.unit = m[1];
     });
   }
+  // '[10101] 펀드명'처럼 앞에 붙은 펀드코드는 떼어 코드로
+  const cm = meta.name && meta.name.match(/^[\[(]\s*([A-Za-z0-9\-]+)\s*[\])]\s*(.+)$/);
+  if (cm) { meta.code ??= cm[1]; meta.name = cm[2].trim(); }
   // 날짜 표시가 따로 없으면 머리글에서 처음 나오는 날짜 (파이썬·매크로판과 같음)
   if (!meta.date) outer: for (let i = 0; i < lim; i++) for (const c of rows[i]) if (typeof c.v === "string") { const d = dateFromText(c.v); if (d) { meta.date = d; break outer; } }
   return meta;
@@ -687,8 +693,9 @@ function extractMeta(rows, upto) {
 
 const UNIT_MULT = { "원": 1, "천원": 1e3, "백만원": 1e6, "억원": 1e8 };
 
-async function parseLedger(file, id) {
-  const L = { id, fileName: file.name, size: file.size, nameCands: [], fields: {}, meta: {} };
+/* 장부 파일 하나 → 장부 목록. 보통은 1개지만, 시트마다 다른 펀드의 원장이 들어 있는 통합 파일은 펀드마다 1개 */
+async function parseLedgers(file, startId) {
+  let picks = [], err = null;
   try {
     const buf = await file.arrayBuffer();
     let wb;
@@ -696,27 +703,46 @@ async function parseLedger(file, id) {
     if (kind === "unknown") throw new Error(MSG_DRM);
     try { wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false, cellStyles: false, cellHTML: false }); }
     catch (e) { throw new Error(readError(e, kind)); }
-    const sheets = wb.SheetNames.map((n) => rowsFromSheet(wb.Sheets[n]));
-    let best = null;
-    for (const rows of sheets) {
+    const sheets = wb.SheetNames.map((n, si) => {
+      const rows = rowsFromSheet(wb.Sheets[n]);
       const ex = extractFromRows(rows);
-      const meta = extractMeta(rows, ex.meta.headerRow);
-      const rank = Object.keys(ex.fields).length + (ex.hasHeader ? 2 : 0);
-      if (!best || rank > best.rank) best = { rank, ex, meta };
-    }
-    if (!best) throw new Error("내용이 비어 있습니다.");
-    L.meta = best.meta;
-    const mult = UNIT_MULT[best.meta.unit] || 1;
-    for (const [k, f] of Object.entries(best.ex.fields)) L.fields[k] = { ...f, v: AMOUNT_FIELDS.includes(k) ? f.v * mult : f.v };
+      return { sheet: n, ex, meta: extractMeta(rows, ex.meta.headerRow), rank: Object.keys(ex.fields).length + (ex.hasHeader ? 2 : 0) };
+    });
+    if (!sheets.length) throw new Error("내용이 비어 있습니다.");
+    picks = splitFunds(sheets);
   } catch (e) {
-    L.error = e.message || String(e);
+    err = e.message || String(e);
   }
+  if (err) return [finishLedger({ id: startId, fileName: file.name, size: file.size, fields: {}, meta: {}, error: err }, file.name, null)];
+  return picks.map((p, k) => {
+    const L = { id: startId + k, fileName: file.name, size: file.size, fields: {}, meta: p.meta };
+    const mult = UNIT_MULT[p.meta.unit] || 1;
+    for (const [key, f] of Object.entries(p.ex.fields)) L.fields[key] = { ...f, v: AMOUNT_FIELDS.includes(key) ? f.v * mult : f.v };
+    return finishLedger(L, file.name, picks.length > 1 ? p.sheet : null);
+  });
+}
+/* 펀드명이 서로 다른 원장 시트가 2개 이상이면 시트마다 장부로, 아니면 가장 내용이 많은 시트 하나 */
+function splitFunds(sheets) {
+  const funds = new Map();
+  for (const x of sheets) {
+    if (!x.ex.hasHeader || !x.meta.name || !(x.ex.fields.asset || x.ex.fields.total || x.ex.fields.net)) continue;
+    const k = normName(x.meta.name);
+    if (!funds.has(k) || funds.get(k).rank < x.rank) funds.set(k, x);
+  }
+  if (funds.size >= 2) return [...funds.values()];
+  let best = sheets[0];
+  for (const x of sheets) if (x.rank > best.rank) best = x;
+  return [best];
+}
+function finishLedger(L, fileName, sheet) {
+  L.sheet = sheet;
   L.name = L.meta.name || null;
-  L.fileTitle = cleanFileName(file.name);
+  // 통합 파일의 시트 장부는 시트 이름(예: 총계정원장_펀드명)을 파일명 대신 쓴다
+  L.fileTitle = cleanFileName(sheet ? sheet + ".x" : fileName);
   L.nameCands = [L.name, L.fileTitle].filter(Boolean);
   L.manager = L.meta.manager || "";
   L.code = L.meta.code || "";
-  L.date = L.meta.date || dateFromFileName(file.name);
+  L.date = L.meta.date || dateFromFileName(fileName);
   L.key = normName(L.name || L.fileTitle);
   computeTotal(L);
   return L;
@@ -926,7 +952,7 @@ function unmatchedReport() {
   const out = [`매칭 안 됨 ${L.length}건`];
   L.forEach((l, k) => {
     const c = ledgerCands(l);
-    out.push("", `${k + 1}. ${l.fileName}`,
+    out.push("", `${k + 1}. ${l.fileName}${l.sheet ? ` [시트 ${l.sheet}]` : ""}`,
       `   본문 펀드명: ${l.name || "(없음)"}`,
       `   파일명 정리: ${l.fileTitle}`,
       `   비교한 핵심이름: ${coreName(l.name || l.fileTitle)}  호수: ${nums(l.name || l.fileTitle).join(",") || "없음"}`,
@@ -992,7 +1018,7 @@ function render() {
   const order = (l) => (l.error ? 0 : l.value == null ? 1 : used.has(l.id) ? 3 : 2);
   const skippedRows = state.skipped.map((k) => `<tr><td style="max-width:18em;overflow-wrap:anywhere">${esc(k.name)}</td><td colspan="7"><span class="err">건너뜀 — ${esc(k.reason)}</span></td><td><span class="pill bad">읽지 않음</span></td></tr>`).join("");
   $("#ledgerBody").innerHTML = (state.ledgers.length || state.skipped.length) ? skippedRows + state.ledgers.slice().sort((a, b) => order(a) - order(b)).map((l) => `<tr>
-      <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}</td>
+      <td style="max-width:18em;overflow-wrap:anywhere">${esc(l.fileName)}${l.sheet ? `<span class="sub">시트: ${esc(l.sheet)}</span>` : ""}</td>
       <td style="max-width:20em">${l.error ? `<span class="err">${esc(l.error)}</span>` : esc(l.name || l.fileTitle)}${l.code ? `<span class="sub">코드 ${esc(l.code)}</span>` : ""}${l.manager ? `<span class="sub">${esc(l.manager)}</span>` : ""}</td>
       <td class="num">${l.date || ""}</td>
       <td class="amount">${fmt(l.value)}</td>
@@ -1098,13 +1124,14 @@ const LEDGER_EXT = /\.(xlsx|xlsm|xlsb|xls|csv|html?)$/i;
 
 // 올린 파일이 하나도 소리 없이 빠지지 않게: 읽음 / 읽기 실패 / 건너뜀 / 중복을 모두 센다
 function ledgerTally() {
-  const read = state.ledgers.filter((l) => !l.error).length, bad = state.ledgers.length - read;
-  return { read, bad, skipped: state.skipped.length, dups: state.dups, uploaded: state.uploaded };
+  const okL = state.ledgers.filter((l) => !l.error);
+  const read = new Set(okL.map((l) => l.fileName + "\u0000" + l.size)).size, bad = state.ledgers.length - okL.length;
+  return { read, funds: okL.length, bad, skipped: state.skipped.length, dups: state.dups, uploaded: state.uploaded };
 }
 function renderLedgerInfo() {
   const t = ledgerTally();
   if (!t.uploaded) { $("#ledgerInfo").innerHTML = ""; return; }
-  const parts = [`읽음 <b>${t.read}</b>`];
+  const parts = [`읽음 <b>${t.read}</b>` + (t.funds > t.read ? ` (펀드 ${t.funds}개 — 여러 펀드가 든 파일 포함)` : "")];
   if (t.bad) parts.push(`<span class="err">읽기 실패 ${t.bad}</span>`);
   if (t.skipped) parts.push(`<span class="err">건너뜀 ${t.skipped}</span>`);
   if (t.dups) parts.push(`같은 파일 중복 ${t.dups}`);
@@ -1124,12 +1151,14 @@ async function onLedgers(files) {
     else if (!LEDGER_EXT.test(f.name)) state.skipped.push({ name: f.name, reason: ext ? `.${ext} 파일은 읽지 않습니다 (엑셀 xlsx·xls·xlsb·csv만)` : "확장자가 없는 파일" });
     else ok.push(f);
   }
-  const start = state.ledgers.length ? Math.max(...state.ledgers.map((l) => l.id)) + 1 : 0;
+  let next = state.ledgers.length ? Math.max(...state.ledgers.map((l) => l.id)) + 1 : 0;
   for (let i = 0; i < ok.length; i++) {
     busy(true, `장부 읽는 중… ${i + 1}/${ok.length}`);
-    const existing = state.ledgers.findIndex((l) => l.fileName === ok[i].name && l.size === ok[i].size);
-    const L = await parseLedger(ok[i], start + i);
-    if (existing >= 0) { state.ledgers.splice(existing, 1, L); state.dups++; } else state.ledgers.push(L);
+    const same = (l) => l.fileName === ok[i].name && l.size === ok[i].size;
+    if (state.ledgers.some(same)) { state.ledgers = state.ledgers.filter((l) => !same(l)); state.dups++; }
+    const Ls = await parseLedgers(ok[i], next);
+    next += Ls.length;
+    state.ledgers.push(...Ls);
   }
   renderLedgerInfo();
   busy(false);

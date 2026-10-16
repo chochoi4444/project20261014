@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .engine import match_names, match_status, norm_name, AUTO_SCORE
-from .ledger import Ledger, parse_ledger
+from .ledger import Ledger, parse_ledgers
 from .workbook import Target, has_number, is_text_mark, parse_target, write_values
 
 LEDGER_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".htm", ".html"}
@@ -64,7 +64,7 @@ def run(target_path, ledger_paths, base_date: str | None = None, overwrite: bool
     for i, f in enumerate(files):
         if progress:
             progress(i + 1, len(files), f)
-        ledgers.append(parse_ledger(f, i))
+        ledgers += parse_ledgers(f, len(ledgers))
     ok = [l for l in ledgers if not l.error]
     base = base_date or target.base_date
     mapping = mapping or {}
@@ -160,7 +160,7 @@ def save_report(results: list[RowResult], out: Path):
             L = r.ledger
             fv = lambda k: ("" if not L or k not in L.fields else L.fields[k]["v"])
             w.writerow([r.excel_row, r.name, r.code, STATUS_KO[r.status], "Y" if r.include else "",
-                        f"{r.score:.3f}" if r.score else "", r.why, L.file_name if L else "",
+                        f"{r.score:.3f}" if r.score else "", r.why, (L.file_name + (f" [{L.sheet}]" if L.sheet else "")) if L else "",
                         (L.name or L.file_title) if L else "", (L.date or "") if L else "",
                         round(L.value) if L and L.value is not None else "", L.method if L else "",
                         L.check[1] if L else "", fv("net"), fv("liab"), fv("nav"), " / ".join(r.notes),
