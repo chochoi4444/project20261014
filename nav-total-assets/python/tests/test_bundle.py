@@ -16,6 +16,7 @@ def test_bundle_matches_package(tmp_path):
     out.write_text(bundle_core.build(), encoding="utf-8")
     spec = importlib.util.spec_from_file_location("core_bundle", out)
     core = importlib.util.module_from_spec(spec)
+    sys.modules["core_bundle"] = core  # dataclass가 모듈을 찾을 수 있게
     spec.loader.exec_module(core)
     d = make(tmp_path / "fx")
     _, _, a, base_a = core.run(d / "대상.xlsx", [d / "장부"])
