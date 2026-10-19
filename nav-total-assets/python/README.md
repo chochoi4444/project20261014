@@ -88,3 +88,14 @@ python -m pytest
 - `test_synthetic.py` — `tests/make_fixture.py`가 만든 **가상 장부**로 읽기→매칭→저장까지 (실제 데이터 없이 CI에서도 실행)
 - 실제 파일로 확인(선택, 저장소 밖 파일):
   `MATCH_CASES=실제케이스.json TARGET=대상.xlsx LEDGERS=장부폴더 BASE_DATE=2026-09-30 python -m pytest -s`
+
+## 핵심 로직 단일 파일
+
+내부망에 텍스트로 옮길 때는 패키지를 파이썬 파일 하나로 묶어 쓸 수 있습니다 (GUI 제외, 결과는 패키지와 같음).
+
+```
+python tools/bundle_core.py 총자산자동입력_핵심로직.py
+python 총자산자동입력_핵심로직.py 대상.xlsx 장부폴더 [옵션]
+```
+
+필요한 것: Python 3.9+, `openpyxl` (.xls 장부는 `xlrd`).
