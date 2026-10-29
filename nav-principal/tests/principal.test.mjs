@@ -69,3 +69,11 @@ test("원본이익 같은 다른 계정은 원본액으로 보지 않는다", ()
   const L = run([["원본이익", null, 1_234, null, 1_234], ["원본액", null, 2_000, null, 2_000]]);
   assert.equal(L.value, 2_000);
 });
+
+test("투자회사는 원본액 대신 잔존좌수(발행주식수)를 쓰고 검토로 표시한다", () => {
+  const ex = E.extractFromRows(sheet([["원본액", null, 327_000, null, 327_000], ["잔존좌수", null, 86_649, null, 86_649]]));
+  const L = { fields: ex.fields, hasPrev: ex.hasPrev, name: "가온이머징인프라투융자회사", meta: {} };
+  E.computePrincipal(L);
+  assert.equal(L.value, 86_649);
+  assert.equal(L.check.s, "warn");
+});

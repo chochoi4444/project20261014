@@ -164,7 +164,7 @@ details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary
       <label class="drop" id="dropTarget">
         <span class="step">1단계</span>
         <span class="what">원본액을 채울 대상 엑셀</span>
-        <span class="hint">‘종목명’과 ‘원본액’ 열이 있는 시트를 자동으로 찾습니다</span>
+        <span class="hint">‘종목명’과 ‘원본액’(또는 ‘출자금총액’) 열이 있는 시트를 자동으로 찾습니다</span>
         <span class="loaded" id="targetInfo"></span>
         <input id="targetFile" type="file" accept=".xlsx,.xlsm,.xls,.xlsb">
       </label>
@@ -649,6 +649,8 @@ function extractFromRows(rows) {
       if (pri < 0) continue;
       if (found[field] && found[field].pri <= pri) continue;
       let left = null, right = null, first = null, prevCr = null;
+      // 전일 대변은 머리글과 같은 열의 값을 먼저 쓴다 (바로 옆이 머리글 없는 계정코드 열인 양식이 있다)
+      if (header && header.prevRight != null) { const ex = row.find((c) => c.c === header.prevRight && typeof c.v === "number"); if (ex) prevCr = ex.v; }
       const labelCol = Math.max(...texts.filter((c) => names.includes(normLabel(c.v)) || labels.has(joined)).map((c) => c.c));
       for (const cell of row) {
         if (typeof cell.v !== "number") continue;
@@ -686,6 +688,7 @@ function extractMeta(rows, upto) {
         if (/[가-힣A-Za-z]/.test(rest)) meta.name ??= rest;
         else for (const c of row.slice(k + 1)) {
           if (typeof c.v === "number") meta.code ??= String(c.v);
+          else if (/^\s*[A-Za-z]{0,2}\d{3,}\s*$/.test(c.v)) meta.code ??= nfkc(c.v).trim();
           else if (/[가-힣A-Za-z]/.test(c.v)) { meta.name ??= nfkc(c.v).trim(); break; }
         }
         return;
@@ -698,6 +701,7 @@ function extractMeta(rows, upto) {
         if (d) meta.date ??= d;
       }
       if (!meta.manager && (meta.headerRow == null) && /(자산운용|운용㈜|투자운용|ASSETMANAGEMENT|INVESTMENT|INVESTMENTTRUST)/i.test(tl)) meta.manager = raw;
+      if (/^투자회사$|^투융자회사$/.test(tl)) meta.company = true;
       m = tl.match(/단위[:：]?\(?(천원|백만원|억원|원)/);
       if (m) meta.unit = m[1];
     });
@@ -741,6 +745,7 @@ async function parseLedgers(file, startId) {
     for (const [key, f] of Object.entries(p.ex.fields)) L.fields[key] = { ...f, v: AMOUNT_FIELDS.includes(key) ? f.v * mult : f.v };
     L.tabs = p.tabs;
     L.hasPrev = !!p.ex.hasPrev;
+    L.classTab = !!p.classTab;
     return finishLedger(L, file.name, picks.length > 1 ? p.sheet : null);
   });
 }
@@ -756,7 +761,11 @@ function splitFunds(sheets) {
   const led = sheets.filter(isLedger);
   const names = new Set(led.filter((x) => x.meta.name).map((x) => normName(x.meta.name)));
   let picks;
-  if (names.size >= 2) {
+  // 펀드명이 하나(또는 없음)여도 탭 이름이 1종·2종·Class처럼 종류를 나타내면 탭마다 장부 (예: 운용 / 1종 / 2종)
+  const CLASS_TAB = /\d\s*종|CLASS|클래스/i;
+  if (names.size < 2 && led.length >= 2 && led.some((x) => CLASS_TAB.test(x.sheet))) {
+    picks = led.map((x) => ((x.classTab = true), x));
+  } else if (names.size >= 2) {
     const funds = new Map();
     for (const x of led) {
       const k = normName(x.meta.name || cleanFileName(x.sheet + ".x")) || x.sheet;
@@ -781,6 +790,11 @@ function finishLedger(L, fileName, sheet) {
   L.name = L.meta.name || null;
   // 통합 파일의 시트 장부는 시트 이름(예: 총계정원장_펀드명)을 파일명 대신 쓴다
   L.fileTitle = cleanFileName(sheet ? sheet + ".x" : fileName);
+  if (L.classTab) {
+    // 종류 탭: 파일명(에서 '1종 2종' 표기를 뺀 것) + 탭 이름. 펀드명이 있으면 거기에도 탭 이름을 붙인다
+    L.fileTitle = (cleanFileName(fileName).replace(/\d+\s*종/g, " ").replace(/\s+/g, " ").trim() + " " + sheet).trim();
+    if (L.name && !normName(L.name).includes(normName(sheet))) L.name = L.name + " " + sheet;
+  }
   L.nameCands = [L.name, L.fileTitle].filter(Boolean);
   L.manager = L.meta.manager || "";
   L.code = L.meta.code || "";
@@ -793,8 +807,13 @@ function finishLedger(L, fileName, sheet) {
 /* 원본액 = 명세부 '원본액' 계정의 전일 대변잔액. 당일 잔액과는 비교만 한다 */
 function computePrincipal(L) {
   if (L.error) { L.value = null; L.check = { s: "bad", t: "읽기 실패" }; return; }
-  const P = L.fields.principal;
-  if (P && P.prev != null) {
+  const P = L.fields.principal, U = L.fields.units;
+  // 투자회사는 원본액이 아니라 발행주식수(= 잔존좌수)를 쓴다
+  const company = !!L.meta?.company || /투자회사|투융자회사/.test(L.name || "");
+  if (company && U && (U.prev ?? U.v) != null) {
+    L.value = U.prev ?? U.v; L.method = `${U.label} ${U.prev != null ? "전일" : "당일"} (투자회사 · 발행주식수)`;
+    L.check = { s: "warn", t: "투자회사라 원본액 대신 잔존좌수 · 확인" };
+  } else if (P && P.prev != null) {
     L.value = P.prev; L.method = P.label + " 전일 대변잔액";
     if (P.v == null) L.check = { s: "mute", t: "당일 잔액 없음" };
     else L.check = Math.abs(P.v - P.prev) < 1 ? { s: "ok", t: "당일 잔액과 같음" } : { s: "mute", t: `당일 잔액 대비 ${fmt(P.v - P.prev)}원 변동` };
@@ -844,7 +863,9 @@ async function parseTarget(file) {
       const find = (re) => row.findIndex((v) => typeof v === "string" && re.test(v.replace(/\s/g, "")));
       const nameCol = find(/^(종목명|펀드명|상품명)$/) >= 0 ? find(/^(종목명|펀드명|상품명)$/) : find(/종목명|펀드명/);
       // '원본액'·'원본금액'·'설정원본' 등. 정확한 이름을 먼저, 없으면 '원본'이 들어간 첫 머리글
-      const valueCol = find(/^(원본액|원본금액|원본)(\(원\))?$/) >= 0 ? find(/^(원본액|원본금액|원본)(\(원\))?$/) : find(/원본/);
+      // 원본액 열이 없으면 '발행주식수(출자금총액)' 열 (보유펀드 리스트 양식)
+      const exact = find(/^(원본액|원본금액|원본)(\(원\))?$/);
+      const valueCol = exact >= 0 ? exact : find(/원본/) >= 0 ? find(/원본/) : find(/출자금총액|출자금|발행주식수/);
       if (nameCol < 0 || valueCol < 0) continue;
       const codeCol = find(/표준코드|ISIN/i), clsCol = find(/유가증권분류|분류/), dateCol = find(/^기준일/);
       let baseDate = dateFromText(row[valueCol]);
@@ -873,7 +894,7 @@ async function parseTarget(file) {
     const first = (aoa.find((r) => r && r.some((v) => v != null && String(v).trim())) || []).filter((v) => v != null && String(v).trim()).slice(0, 6).map((v) => String(v).replace(/\s+/g, " ").slice(0, 14));
     return `‘${n}’: ${first.length ? first.join(" | ") : "(빈 시트)"}`;
   });
-  throw new Error(`‘종목명(또는 펀드명)’과 ‘원본액’ 머리글이 같은 줄에 있는 시트를 찾지 못했습니다 (각 시트 위쪽 15줄 확인). 읽은 시트: ${seen.join(" / ")}`);
+  throw new Error(`‘종목명(또는 펀드명)’과 ‘원본액’(또는 ‘발행주식수(출자금총액)’) 머리글이 같은 줄에 있는 시트를 찾지 못했습니다 (각 시트 위쪽 15줄 확인). 읽은 시트: ${seen.join(" / ")}`);
 }
 
 /* ---------- 매핑 기억 (이 브라우저 전용) ---------- */
