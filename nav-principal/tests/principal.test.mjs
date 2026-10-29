@@ -31,14 +31,15 @@ test("원본액 계정의 전일 대변잔액을 읽는다", () => {
   const L = run([["자산", 12_000, null, 12_500, null], ["원본액", null, 10_000_000_000, null, 10_300_000_000], ["신탁재산순자산총액", null, 1, null, 2]]);
   assert.equal(L.value, 10_000_000_000);
   assert.match(L.method, /원본액 전일 대변잔액/);
-  assert.equal(L.check.s, "mute");
+  assert.equal(L.check.s, "mute", "잔존좌수가 없으면 대조 안 함");
   assert.match(L.check.t, /300,000,000/);
 });
 
-test("전일과 당일이 같으면 일치로 표시", () => {
+test("잔존좌수가 없으면 대조하지 않고 그대로 넣는다", () => {
   const L = run([["원본액", null, 5_000, null, 5_000], ["자산", 1, null, 1, null]]);
   assert.equal(L.value, 5_000);
-  assert.equal(L.check.s, "ok");
+  assert.equal(L.units, null);
+  assert.equal(L.check.s, "mute");
 });
 
 test("전일잔액 병합 머리글 + 아랫줄 차변/대변 양식", () => {
@@ -76,4 +77,15 @@ test("투자회사는 원본액 대신 잔존좌수(발행주식수)를 쓰고 �
   E.computePrincipal(L);
   assert.equal(L.value, 86_649);
   assert.equal(L.check.s, "warn");
+});
+
+test("원본액과 잔존좌수(차변 쪽)가 같으면 일치, 다르면 검토", () => {
+  const same = run([["원본액", null, 5_000, null, 5_000], ["수익증권잔존좌수", 5_000, null, 5_000, null]]);
+  assert.equal(same.units, 5_000);
+  assert.equal(same.check.s, "ok", same.check.t);
+  const diff = run([["원본액", null, 5_000, null, 5_000], ["잔존좌수", null, 4_000, null, 4_000]]);
+  assert.equal(diff.value, 5_000);
+  assert.equal(diff.units, 4_000);
+  assert.equal(diff.check.s, "warn");
+  assert.match(diff.check.t, /1,000 차이/);
 });

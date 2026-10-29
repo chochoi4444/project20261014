@@ -198,7 +198,7 @@ details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary
       <div class="scroll">
         <table>
           <thead><tr>
-            <th><label style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="incAll" aria-label="보이는 행 모두 입력"> 입력</label></th><th class="r">행</th><th>종목명 (대상 엑셀)</th><th>기준가격대장</th><th>유사도</th><th class="r">원본액 (원)</th><th>검증</th><th>장부 기준일</th><th>상태</th>
+            <th><label style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="incAll" aria-label="보이는 행 모두 입력"> 입력</label></th><th class="r">행</th><th>종목명 (대상 엑셀)</th><th>기준가격대장</th><th>유사도</th><th class="r">원본액 (원)</th><th class="r">잔존좌수</th><th>검증</th><th>장부 기준일</th><th>상태</th>
           </tr></thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -212,7 +212,7 @@ details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary
       <div class="scroll">
         <table>
           <thead><tr>
-            <th>파일</th><th>인식한 펀드명</th><th>기준일</th><th class="r">원본액 (전일 대변)</th><th class="r">원본액 (당일)</th><th class="r">순자산</th><th class="r">기준가</th><th>산출 근거</th><th>매칭된 행</th>
+            <th>파일</th><th>인식한 펀드명</th><th>기준일</th><th class="r">원본액 (전일 대변)</th><th class="r">잔존좌수</th><th class="r">순자산</th><th class="r">기준가</th><th>산출 근거</th><th>매칭된 행</th>
           </tr></thead>
           <tbody id="ledgerBody"></tbody>
         </table>
@@ -237,7 +237,7 @@ details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary
     <div class="verdict">
       <span class="q">결론</span>
       <span class="a">전일 대변잔액</span>
-      <p class="t">계정과목 중 <b>원본액</b> 계정 줄에서 <b>전일잔액의 대변</b> 칸을 그대로 넣습니다. 같은 줄의 당일잔액은 넣지 않고, 전일과 다르면 그 차이(당일 설정·해지분)를 참고로 보여 줍니다.</p>
+      <p class="t">계정과목 중 <b>원본액</b> 계정 줄에서 <b>전일잔액의 대변</b> 칸을 그대로 넣습니다. 같은 줄의 당일잔액은 넣지 않습니다. 잔존좌수(1좌 = 1원)를 함께 보여 주고, 원본액과 다르면 ‘검토’로 표시합니다. 투자회사는 원본액 대신 잔존좌수(발행주식수)를 넣습니다.</p>
     </div>
     <div class="grid2">
       <div class="card">
@@ -298,7 +298,7 @@ details.ledgers details.tabs summary, details.ledgers details.tabs[open] summary
         <table>
           <tbody>
             <tr><td><span class="pill ok">자동</span></td><td>유사도 0.85 이상이면서 2순위 후보와 차이 0.08 이상, 또는 유사도 0.75 이상이면서 2순위와 차이 0.40 이상. 여기에 기준일 일치까지 맞으면 기본으로 입력됩니다.</td></tr>
-            <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 기준일 상이 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
+            <tr><td><span class="pill warn">검토</span></td><td>유사도 0.55~0.85, 기준일 상이, 원본액과 잔존좌수가 다름, 투자회사라 잔존좌수를 쓴 경우 중 하나. 확인 후 체크해야 입력됩니다.</td></tr>
             <tr><td><span class="pill acc">수동</span></td><td>담당자가 장부를 직접 고른 행. 선택은 이 화면에서만 유지되며, ‘매핑 내보내기’로 받은 파일을 다음에 ‘매핑 가져오기’로 다시 쓸 수 있습니다.</td></tr>
             <tr><td><span class="pill bad">미매칭</span></td><td>맞는 장부가 없거나 점수가 너무 낮음. PEF·비상장주식처럼 기준가격대장이 없는 종목은 보통 여기에 남습니다.</td></tr>
             <tr><td><span class="pill mute">제외</span></td><td>원본액 칸에 ‘제외’ 같은 글자가 적힌 행(예: MMF). 건드리지 않습니다.</td></tr>
@@ -590,7 +590,7 @@ const FIELDS = {
   liab: ["신탁자산총부채", "신탁재산총부채", "부채", "부채합계", "부채총계", "부채총액", "총부채"],
   asset: ["자산", "자산합계", "자산총계"],
   nav: ["수익증권기준가격", "수익증권기준가액", "기준가격", "기준가"],
-  units: ["수익증권잔존좌수", "잔존좌수", "수익증권좌수", "발행좌수", "총좌수"],
+  units: ["수익증권잔존좌수", "잔존좌수", "수익증권좌수", "발행좌수", "총좌수", "좌수"],
   principal: ["원본액", "원본합계", "원본총계", "원본", "신탁원본", "신탁원본액", "수익증권원본", "수익증권원본액", "원본금액"],
 };
 const AMOUNT_FIELDS = ["total", "net", "liab", "asset", "principal"];
@@ -610,9 +610,12 @@ function headerAt(row, next) {
   // 전일 대변 칸: '전일' 칸이 둘 이상이면 오른쪽(대변), 하나뿐이면 아랫줄에서 그 아래 '대변'을 찾는다
   const prev = texts.filter((c) => /전일/.test(normLabel(c.v)) && !/증감/.test(normLabel(c.v))).map((c) => c.c);
   let prevRight = prev.length >= 2 ? Math.max(...prev) : prev.length ? prev[0] : null;
+  let prevLeft = prev.length >= 2 ? Math.min(...prev) : null;
   if (prev.length === 1 && next) {
     const p = prev[0], after = Math.min(...cols.filter((c) => c > p), Infinity);
     const cr = next.filter((c) => typeof c.v === "string" && /대변/.test(normLabel(c.v)) && c.c >= p && c.c < after);
+    const dr = next.filter((c) => typeof c.v === "string" && /차변/.test(normLabel(c.v)) && c.c >= p && c.c < after);
+    if (dr.length) prevLeft = dr[0].c;
     if (cr.length) { prevRight = cr[0].c; cols = [...new Set(cols.concat(next.map((c) => c.c)))].sort((a, b) => a - b); subRow = true; }
   }
   let left = Math.min(...dang), right = Math.max(...dang);
@@ -624,7 +627,7 @@ function headerAt(row, next) {
     if (dr) left = dr.c;
     if (crr) right = crr.c;
   }
-  return { cols, left, right, prevRight, subRow };
+  return { cols, left, right, prevLeft, prevRight, subRow };
 }
 function extractFromRows(rows) {
   const out = { fields: {}, meta: {}, hasHeader: false };
@@ -648,9 +651,10 @@ function extractFromRows(rows) {
       const pri = names.findIndex((n) => labels.has(n));
       if (pri < 0) continue;
       if (found[field] && found[field].pri <= pri) continue;
-      let left = null, right = null, first = null, prevCr = null;
+      let left = null, right = null, first = null, prevCr = null, prevDr = null;
       // 전일 대변은 머리글과 같은 열의 값을 먼저 쓴다 (바로 옆이 머리글 없는 계정코드 열인 양식이 있다)
       if (header && header.prevRight != null) { const ex = row.find((c) => c.c === header.prevRight && typeof c.v === "number"); if (ex) prevCr = ex.v; }
+      if (header && header.prevLeft != null) { const ex = row.find((c) => c.c === header.prevLeft && typeof c.v === "number"); if (ex) prevDr = ex.v; }
       const labelCol = Math.max(...texts.filter((c) => names.includes(normLabel(c.v)) || labels.has(joined)).map((c) => c.c));
       for (const cell of row) {
         if (typeof cell.v !== "number") continue;
@@ -660,6 +664,7 @@ function extractFromRows(rows) {
           if (near === header.left && left == null) left = cell.v;
           else if (near === header.right && right == null) right = cell.v;
           else if (near === header.prevRight && prevCr == null) prevCr = cell.v;
+          else if (near === header.prevLeft && prevDr == null) prevDr = cell.v;
         } else if (cell.c > labelCol && first == null) first = cell.v;
       }
       let v;
@@ -667,8 +672,8 @@ function extractFromRows(rows) {
         const pref = CREDIT_FIELDS.includes(field) ? [right, left] : [left, right];
         v = pref.find((x) => x != null && x !== 0) ?? pref.find((x) => x != null) ?? null;
       } else v = first;
-      if (v == null && prevCr == null) continue;
-      found[field] = { pri, v, prev: prevCr, label: names[pri] };
+      if (v == null && prevCr == null && prevDr == null) continue;
+      found[field] = { pri, v, prev: prevCr, prevDr, label: names[pri] };
     }
   });
   for (const [k, f] of Object.entries(found)) out.fields[k] = f;
@@ -805,18 +810,28 @@ function finishLedger(L, fileName, sheet) {
 }
 
 /* 원본액 = 명세부 '원본액' 계정의 전일 대변잔액. 당일 잔액과는 비교만 한다 */
+/* 잔존좌수: 양식마다 차변·대변 어느 쪽에도 있다. 전일 대변 → 전일 차변 → 당일 순으로 0이 아닌 값 */
+function unitsOf(U) {
+  if (!U) return null;
+  const xs = [U.prev, U.prevDr, U.v];
+  return xs.find((x) => x != null && x !== 0) ?? xs.find((x) => x != null) ?? null;
+}
 function computePrincipal(L) {
-  if (L.error) { L.value = null; L.check = { s: "bad", t: "읽기 실패" }; return; }
-  const P = L.fields.principal, U = L.fields.units;
+  if (L.error) { L.value = null; L.units = null; L.check = { s: "bad", t: "읽기 실패" }; return; }
+  const P = L.fields.principal, units = unitsOf(L.fields.units);
+  L.units = units;
   // 투자회사는 원본액이 아니라 발행주식수(= 잔존좌수)를 쓴다
   const company = !!L.meta?.company || /투자회사|투융자회사/.test(L.name || "");
-  if (company && U && (U.prev ?? U.v) != null) {
-    L.value = U.prev ?? U.v; L.method = `${U.label} ${U.prev != null ? "전일" : "당일"} (투자회사 · 발행주식수)`;
+  if (company && units != null) {
+    L.value = units; L.method = `${L.fields.units.label} (투자회사 · 발행주식수)`;
     L.check = { s: "warn", t: "투자회사라 원본액 대신 잔존좌수 · 확인" };
   } else if (P && P.prev != null) {
     L.value = P.prev; L.method = P.label + " 전일 대변잔액";
-    if (P.v == null) L.check = { s: "mute", t: "당일 잔액 없음" };
-    else L.check = Math.abs(P.v - P.prev) < 1 ? { s: "ok", t: "당일 잔액과 같음" } : { s: "mute", t: `당일 잔액 대비 ${fmt(P.v - P.prev)}원 변동` };
+    const today = P.v != null && Math.abs(P.v - P.prev) >= 1 ? ` · 당일 원본액 ${fmt(P.v - P.prev)}원 변동` : "";
+    // 원본액과 잔존좌수(1좌 = 1원)가 다르면 검토
+    if (units == null) L.check = { s: "mute", t: "잔존좌수 없음" + today };
+    else if (Math.abs(units - P.prev) < 1) L.check = { s: "ok", t: "잔존좌수와 일치" + today };
+    else L.check = { s: "warn", t: `잔존좌수와 ${fmt(P.prev - units)} 차이 · 확인` + today };
   } else if (P) {
     L.value = null; L.method = ""; L.check = { s: "bad", t: L.hasPrev ? "원본액 계정의 전일 대변잔액이 비어 있음" : "전일잔액 열을 찾지 못함" };
   } else {
@@ -1065,12 +1080,13 @@ function render() {
       <td>${r.status === "skip" ? "" : `<select class="pick" aria-label="${esc(r.name)} 장부 선택" ${disabled}>${opts}</select>`}${l ? `<span class="why">${esc(l.fileName)}</span>` : ""}</td>
       <td>${scoreCell(r.score)}${r.why ? `<span class="why">${esc(r.why)}</span>` : ""}</td>
       <td class="amount">${l ? fmt(l.value) : (typeof r.existing === "number" ? `<span style="color:var(--ink-2)">${fmt(r.existing)}</span>` : "")}</td>
+      <td class="amount">${l ? fmt(l.units) : ""}</td>
       <td>${l ? `<span class="pill ${l.check.s}">${esc(l.check.t)}</span>` : ""}</td>
       <td class="num" style="white-space:nowrap">${l && l.date ? l.date : ""}</td>
       <td><span class="pill ${pc}">${pt}</span>${r.notes.length ? `<span class="why">${esc(r.notes.join(" · "))}</span>` : ""}</td>
     </tr>`;
-  }).join("") : (R.length ? `<tr><td colspan="9" class="empty">해당하는 행이 없습니다.</td></tr>`
-    : `<tr><td colspan="9" class="empty"><b>시작하기</b><br>① 위 1단계에 원본액을 채울 엑셀을, ② 2단계에 펀드별 기준가격대장을 올리면<br>펀드마다 매칭된 장부와 원본액이 여기에 나옵니다. 올린 파일은 이 브라우저 안에서만 처리됩니다.</td></tr>`);
+  }).join("") : (R.length ? `<tr><td colspan="10" class="empty">해당하는 행이 없습니다.</td></tr>`
+    : `<tr><td colspan="10" class="empty"><b>시작하기</b><br>① 위 1단계에 원본액을 채울 엑셀을, ② 2단계에 펀드별 기준가격대장을 올리면<br>펀드마다 매칭된 장부와 원본액이 여기에 나옵니다. 올린 파일은 이 브라우저 안에서만 처리됩니다.</td></tr>`);
 
   // 장부별 추출값
   const used = new Map();
@@ -1094,7 +1110,7 @@ function render() {
       <td style="max-width:20em">${l.error ? `<span class="err">${esc(l.error)}</span>` : esc(l.name || l.fileTitle)}${l.code ? `<span class="sub">코드 ${esc(l.code)}</span>` : ""}${l.manager ? `<span class="sub">${esc(l.manager)}</span>` : ""}</td>
       <td class="num">${l.date || ""}</td>
       <td class="amount">${fmt(l.value)}</td>
-      <td class="amount">${fmt(l.fields.principal?.v)}</td>
+      <td class="amount">${fmt(l.units)}</td>
       <td class="amount">${fmt(l.fields.net?.v)}</td>
       <td class="amount">${fmtNav(l.fields.nav?.v)}</td>
       <td style="font-size:12px">${esc(l.method || "")}${l.check ? `<br><span class="pill ${l.check.s}">${esc(l.check.t)}</span>` : ""}</td>
@@ -1373,12 +1389,12 @@ $("#btnSave").addEventListener("click", async () => {
 });
 
 $("#btnCsv").addEventListener("click", async () => {
-  const head = ["행", "종목명", "표준코드", "상태", "입력", "유사도", "매칭근거", "기준가격대장 파일", "장부 펀드명", "장부 기준일", "원본액", "산출근거", "검증", "원본액(당일)", "순자산", "기준가", "메모"];
+  const head = ["행", "종목명", "표준코드", "상태", "입력", "유사도", "매칭근거", "기준가격대장 파일", "장부 펀드명", "장부 기준일", "원본액", "산출근거", "검증", "잔존좌수", "순자산", "기준가", "메모"];
   const L = (id) => state.ledgers.find((l) => l.id === id);
   const lines = [head].concat(state.results.map((r) => {
     const l = r.ledgerId != null ? L(r.ledgerId) : null;
     return [r.excelRow, r.name, r.code, STATUS[r.status][1], r.include ? "Y" : "", r.score ? r.score.toFixed(3) : "", r.why, l?.fileName || "", l ? (l.name || l.fileTitle) : "", l?.date || "",
-      l?.value != null ? Math.round(l.value) : "", l?.method || "", l?.check?.t || "", l?.fields.principal?.v ?? "", l?.fields.net?.v ?? "", l?.fields.nav?.v ?? "", r.notes.join(" / ")];
+      l?.value != null ? Math.round(l.value) : "", l?.method || "", l?.check?.t || "", l?.units ?? "", l?.fields.net?.v ?? "", l?.fields.nav?.v ?? "", r.notes.join(" / ")];
   }));
   const csv = "﻿" + lines.map((row) => row.map((v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\r\n");
   await saveFile(`원본액_매칭결과_${new Date().toISOString().slice(0, 10)}.csv`, new Blob([csv], { type: "text/csv" }));
